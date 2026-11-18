@@ -1,0 +1,61 @@
+import { type Command, COMMANDS } from './commands.ts'
+import { ensureHome, resolveHome } from './home.ts'
+import { parseLifecyclePayload } from './lifecycle-payload.ts'
+import { createLogger, type Logger, type Sink } from './logger.ts'
+
+export interface RunIo {
+  env: NodeJS.ProcessEnv
+  readStdin(): Promise<string>
+  stdout: Sink
+  stderr: Sink
+}
+
+const EXIT_FAILED = 1
+const EXIT_USAGE = 2
+
+function usage(): string {
+  return `usage: vercel-orca <command> [args]\ncommands: ${[...COMMANDS.keys()].join(', ')}`
+}
+
+// Only `create` may write to stdout (its JSON result), and it does so through io.stdout itself.
+// Everything else, errors included, goes through the logger.
+export async function run(argv: string[], io: RunIo): Promise<number> {
+  const [name, ...args] = argv
+  const command = name === undefined ? undefined : COMMANDS.get(name)
+  if (name === undefined || !command) {
+    io.stderr.write(`${name === undefined ? '' : `unknown command "${name}"\n`}${usage()}\n`)
+    return EXIT_USAGE
+  }
+
+  const home = resolveHome(io.env)
+  ensureHome(home)
+  const logger = createLogger({
+    file: home.lifecycleLog,
+    stderr: io.stderr,
+    secrets: [io.env.VERCEL_TOKEN ?? ''],
+  })
+  return runCommand(name, args, command, io, logger)
+}
+
+async function runCommand(
+  name: string,
+  args: string[],
+  command: Command,
+  io: RunIo,
+  logger: Logger,
+): Promise<number> {
+  const started = Date.now()
+  let subject = ''
+  try {
+    const payload = command.readsPayload ? parseLifecyclePayload(await io.readStdin()) : undefined
+    subject = payload ? ` sandbox=${payload.sandbox}` : ''
+    logger.info(`${name}${subject} started`)
+    await command.run({ args, logger, stdout: io.stdout, payload })
+    logger.info(`${name}${subject} done in ${Date.now() - started}ms`)
+    return 0
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    logger.error(`${name}${subject} failed after ${Date.now() - started}ms: ${reason}`)
+    return EXIT_FAILED
+  }
+}
