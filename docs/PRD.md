@@ -80,7 +80,7 @@ Orca ─ ssh ─ ProxyCommand: vercel-orca proxy <name>
 - `vercel-orca proxy <name>`:
   - refuses while the workspace is asleep, so a reconnect never wakes it by accident;
   - resumes the sandbox if Vercel stopped it on timeout, and starts the bridge again;
-  - looks up the current published URL and pipes stdin/stdout through a WebSocket (Node 22's built-in client, so nothing to install locally);
+  - looks up the current published URL and pipes stdin/stdout through a WebSocket (Node's built-in client, so nothing to install locally);
   - extends the sandbox timeout while the connection is open.
 - Setup adds one `Include` line at the top of `~/.ssh/config` pointing to `~/.vercel-orca/ssh_config`, which holds one block per sandbox (`Host`, `User`, `IdentityFile`, `ProxyCommand`).
 
@@ -163,7 +163,7 @@ Not planned, only noted:
 **Compatibility**
 
 - Orca 1.4.245 or later, with Settings > Experimental > Cloud VM turned on.
-- Node.js 22 or later, Git, OpenSSH.
+- Node.js 24 or later, Git, OpenSSH.
 - macOS and Linux.
 - Vercel Pro or Enterprise for real use (up to 24 hours per session); Hobby works but stops after 45 minutes.
 

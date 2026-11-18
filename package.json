@@ -1,0 +1,31 @@
+{
+  "name": "vercel-orca",
+  "version": "0.0.0",
+  "description": "Orca plugin that runs a workspace in its own Vercel Sandbox, reached over SSH.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "repository": "github:oscarbotteri/orca-vercel-sandbox",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "check": "biome check .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "verify": "tsc --noEmit && npm run lint && npm run format:check && npm test"
+  },
+  "dependencies": {
+    "@vercel/sandbox": "^4.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.8",
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  }
+}
