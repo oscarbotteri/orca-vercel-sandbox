@@ -2,9 +2,13 @@ import type { VercelCredentials } from './credentials.ts'
 import { UserError } from './errors.ts'
 import type { LifecyclePayload } from './lifecycle-payload.ts'
 import type { Logger, Sink } from './logger.ts'
+import { setupCommand, uninstallCommand } from './setup.ts'
 
 export interface CommandContext {
   args: string[]
+  env: NodeJS.ProcessEnv
+  // Asks the person a yes/no question; false when there is nobody to ask.
+  confirm(question: string): Promise<boolean>
   logger: Logger
   // Only `create` writes here: its JSON result is the one thing Orca reads from stdout.
   stdout: Sink
@@ -35,8 +39,8 @@ export const COMMANDS: ReadonlyMap<string, Command> = new Map([
   command('resume', true),
   command('destroy', true),
   command('proxy'),
-  command('setup'),
-  command('uninstall'),
+  ['setup', setupCommand],
+  ['uninstall', uninstallCommand],
   command('doctor'),
   command('pull'),
   command('list'),
