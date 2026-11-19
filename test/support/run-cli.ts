@@ -29,6 +29,8 @@ export interface CliOptions {
   network?: { apiUrl: string; bridgePort: number }
   // Bytes the tunnel reads from the person's side (what ssh would send).
   tunnelInput?: Readable
+  // Makes every write to the tunnel's output fail, as a closed ssh would (EPIPE).
+  failTunnelWrites?: boolean
   // Reuse the user home of an earlier run instead of creating a fresh one.
   userHome?: string
   // Seed the user home before the command runs.
@@ -75,6 +77,7 @@ export async function runCli(argv: string[], options: CliOptions = {}): Promise<
       input: options.tunnelInput ?? Readable.from([]),
       output: new Writable({
         write(chunk: Buffer, _encoding, done) {
+          if (options.failTunnelWrites) return done(new Error('write EPIPE'))
           tunnelChunks.push(chunk)
           done()
         },

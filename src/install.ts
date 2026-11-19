@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
+import { UserError } from './errors.ts'
 import type { AdapterHome } from './home.ts'
 
 export const WRAPPER_NAME = 'vercel-orca'
@@ -37,7 +38,12 @@ export function installAdapter(home: AdapterHome, sourceDir: string): void {
   // The sources import @vercel/sandbox, which Node resolves from the installed copy upward. Until
   // the adapter ships its own dependencies, share the checkout's, so it must stay in place.
   const modules = join(sourceDir, '..', 'node_modules')
-  if (existsSync(modules)) symlinkSync(modules, join(lib, 'node_modules'), 'dir')
+  if (!existsSync(modules)) {
+    throw new UserError(
+      `${modules} is missing, so the adapter could not load its dependencies; run "npm ci" in the checkout and set up again`,
+    )
+  }
+  symlinkSync(modules, join(lib, 'node_modules'), 'dir')
   const wrapper = wrapperPath(home)
   writeFileSync(wrapper, `#!/bin/sh\nexec node ${shellQuote(join(lib, 'cli.ts'))} "$@"\n`)
   chmodSync(wrapper, 0o755)

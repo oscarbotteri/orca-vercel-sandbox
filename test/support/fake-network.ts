@@ -7,7 +7,7 @@ export const CREDENTIAL_ENV = {
 }
 
 // The body `GET /v2/sandboxes/<name>` answers: a running sandbox with port 8080 published.
-export function sandboxBody(name: string, subdomain = 'sb-fake'): unknown {
+export function sandboxBody(name: string, subdomain = 'sb-fake', published = true): unknown {
   return {
     sandbox: {
       name,
@@ -29,7 +29,7 @@ export function sandboxBody(name: string, subdomain = 'sb-fake'): unknown {
       cwd: '/vercel',
       updatedAt: 1,
     },
-    routes: [{ url: `https://${subdomain}.vercel.run`, subdomain, port: 8080 }],
+    routes: published ? [{ url: `https://${subdomain}.vercel.run`, subdomain, port: 8080 }] : [],
   }
 }
 

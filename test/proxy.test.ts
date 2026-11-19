@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process'
+import type { AddressInfo } from 'node:net'
+import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -112,9 +114,37 @@ describe('vercel-orca proxy failures', () => {
     const result = await proxy('orca-missing')
     expect(result.code).toBe(1)
     expect(result.stdout).toBe('')
-    expect(result.stderr).toContain('cannot find the SSH bridge of sandbox orca-missing')
+    expect(result.stderr).toContain('cannot look up sandbox orca-missing on Vercel')
     expect(result.readLog()).toContain('proxy failed')
     expectNoSecrets(result)
+  })
+
+  it('says so when the sandbox publishes no bridge port', async () => {
+    api.on('GET', '/v2/sandboxes/orca-abc123', () => ({
+      body: sandboxBody('orca-abc123', 'sb-fake', false),
+    }))
+    const result = await proxy('orca-abc123')
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('sandbox orca-abc123 publishes no SSH bridge port (8080)')
+  })
+
+  it('reports ssh closing its end as an error instead of crashing', async () => {
+    const banner = createServer((socket) => socket.end('SSH-2.0-fake\r\n'))
+    await new Promise<void>((resolve) => banner.listen(0, '127.0.0.1', resolve))
+    const bridge = await startWsBridge((banner.address() as AddressInfo).port)
+    api.on('GET', '/v2/sandboxes/orca-abc123', () => ({ body: sandboxBody('orca-abc123') }))
+    try {
+      const result = await runCli(['proxy', 'orca-abc123'], {
+        env: CREDENTIAL_ENV,
+        network: { apiUrl: api.url, bridgePort: bridge.port },
+        failTunnelWrites: true,
+      })
+      expect(result.code).toBe(1)
+      expect(result.stderr).toContain('connection to sandbox orca-abc123 failed: write EPIPE')
+    } finally {
+      await bridge.close()
+      await new Promise((resolve) => banner.close(resolve))
+    }
   })
 
   it('reports a bridge that cannot be reached', async () => {

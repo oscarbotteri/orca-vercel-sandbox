@@ -25,11 +25,18 @@ async function bridgeUrl(
   credentials: VercelCredentials,
   network: Network,
 ): Promise<string> {
+  let sandbox: Sandbox
   try {
-    const sandbox = await Sandbox.get({ name, ...credentials, fetch: network.fetch })
+    sandbox = await Sandbox.get({ name, ...credentials, fetch: network.fetch })
+  } catch (error) {
+    throw new UserError(`cannot look up sandbox ${name} on Vercel: ${reasonOf(error)}`, {
+      cause: error,
+    })
+  }
+  try {
     return sandbox.domain(BRIDGE_PORT).replace(/^http/, 'ws')
   } catch (error) {
-    throw new UserError(`cannot find the SSH bridge of sandbox ${name}: ${reasonOf(error)}`, {
+    throw new UserError(`sandbox ${name} publishes no SSH bridge port (${BRIDGE_PORT})`, {
       cause: error,
     })
   }
@@ -52,9 +59,13 @@ function pipeThrough(socket: WebSocket, tunnel: Tunnel): Promise<void> {
       if (typeof data === 'string') return reject(new Error('the bridge sent a text message'))
       tunnel.output.write(Buffer.from(data as ArrayBuffer))
     })
+    // ssh closing its end while the bridge still sends would otherwise crash on EPIPE.
+    tunnel.output.on('error', reject)
     socket.addEventListener('error', () => reject(new Error('the WebSocket connection failed')))
     // An empty write completes once everything before it has reached ssh.
-    socket.addEventListener('close', () => tunnel.output.write(Buffer.alloc(0), () => resolve()))
+    socket.addEventListener('close', () =>
+      tunnel.output.write(Buffer.alloc(0), (error) => (error ? reject(error) : resolve())),
+    )
   })
 }
 
