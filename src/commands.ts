@@ -1,8 +1,10 @@
+import { createCommand } from './create.ts'
 import type { VercelCredentials } from './credentials.ts'
 import { UserError } from './errors.ts'
 import type { LifecyclePayload } from './lifecycle-payload.ts'
 import type { Logger, Sink } from './logger.ts'
 import { type Network, proxyCommand, type Tunnel } from './proxy.ts'
+import type { SandboxProvider } from './sandbox-session.ts'
 import { setupCommand, uninstallCommand } from './setup.ts'
 
 export interface CommandContext {
@@ -19,6 +21,8 @@ export interface CommandContext {
   tunnel: Tunnel
   // Resolved on demand so a command that never calls the API does not need them.
   credentials(): VercelCredentials
+  // The Vercel sandboxes; resolved on demand like the credentials.
+  sandboxes(): SandboxProvider
   // Present for suspend, resume and destroy, which Orca feeds a lifecycle payload.
   payload?: LifecyclePayload
 }
@@ -39,7 +43,7 @@ function command(name: string, readsPayload = false): [string, Command] {
 }
 
 export const COMMANDS: ReadonlyMap<string, Command> = new Map([
-  command('create'),
+  ['create', createCommand],
   command('suspend', true),
   command('resume', true),
   command('destroy', true),

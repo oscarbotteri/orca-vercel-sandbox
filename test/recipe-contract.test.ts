@@ -40,6 +40,6 @@ describe('vm-recipe.json', () => {
     const result = await orca.runPhase('create')
     expect(result.code).toBe(1)
     expect(result.stdout).toBe('')
-    expect(result.stderr).toContain('vercel-orca create is not implemented yet')
+    expect(result.stderr).toContain('VERCEL_TOKEN is not set')
   })
 })

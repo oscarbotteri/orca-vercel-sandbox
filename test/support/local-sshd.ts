@@ -1,5 +1,5 @@
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process'
-import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createConnection, createServer } from 'node:net'
 import { tmpdir, userInfo } from 'node:os'
 import { join } from 'node:path'
@@ -26,6 +26,8 @@ export interface LocalSshd {
   // Private key the server trusts, and one it does not.
   clientKey: string
   strangerKey: string
+  // Trusts one more public key, as a sandbox's authorized_keys does once create has written it.
+  authorizeKey(publicKey: string): void
   sshArgs(identity?: string): string[]
   stop(): Promise<void>
 }
@@ -114,6 +116,7 @@ export async function startLocalSshd(): Promise<LocalSshd> {
     user,
     clientKey,
     strangerKey,
+    authorizeKey: (publicKey) => appendFileSync(authorized, `${publicKey.trim()}\n`),
     sshArgs: (identity = clientKey) => [
       '-F',
       'none',
