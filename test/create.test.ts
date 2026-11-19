@@ -110,7 +110,9 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
   })
 
   describe('git checkout', () => {
-    const inSandbox = (dir = 'project') => join(sandboxHome, 'work', dir)
+    function inSandbox(dir = 'project'): string {
+      return join(sandboxHome, 'work', dir)
+    }
 
     it('puts a new branch on the commit Orca picked', async () => {
       repo = makeRepo()

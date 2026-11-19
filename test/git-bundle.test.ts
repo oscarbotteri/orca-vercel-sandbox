@@ -39,6 +39,37 @@ describe('prepareCheckout', () => {
     ).rejects.toThrow('unsupported branch')
   })
 
+  it.each(['feature#12', 'fix+1', 'release@2'])('accepts the valid branch %s', async (branch) => {
+    const repo = makeRepo()
+    const source = await prepareCheckout({ ORCA_REPO_PATH: repo.path, ORCA_REPO_BRANCH: branch })
+    expect(source.branch).toBe(branch)
+  })
+
+  it.each(['a..b', 'foo.lock', 'x/', '-x'])('refuses the invalid branch %s', async (branch) => {
+    const repo = makeRepo()
+    await expect(
+      prepareCheckout({ ORCA_REPO_PATH: repo.path, ORCA_REPO_BRANCH: branch }),
+    ).rejects.toThrow('unsupported branch')
+  })
+
+  it('uses a different bundle ref for every run', async () => {
+    const repo = makeRepo()
+    const env = { ORCA_REPO_PATH: repo.path }
+    const [a, b] = await Promise.all([prepareCheckout(env), prepareCheckout(env)])
+    expect(a.bundleRef).not.toBe(b.bundleRef)
+  })
+
+  it('checks the git identity before building the bundle', async () => {
+    const repo = makeRepo('project', false)
+    await expect(
+      prepareCheckout({
+        ORCA_REPO_PATH: repo.path,
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_NOSYSTEM: '1',
+      }),
+    ).rejects.toThrow('user.name')
+  })
+
   it('reports the git error when the ref does not resolve', async () => {
     const repo = makeRepo()
     await expect(

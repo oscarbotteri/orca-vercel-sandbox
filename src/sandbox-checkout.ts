@@ -1,5 +1,5 @@
 import { UserError } from './errors.ts'
-import { BUNDLE_REF, type CheckoutSource } from './git-bundle.ts'
+import type { CheckoutSource } from './git-bundle.ts'
 import { shellQuote } from './install.ts'
 import type { SandboxSession } from './sandbox-session.ts'
 import type { SandboxIdentity } from './sandbox-ssh.ts'
@@ -21,7 +21,7 @@ export async function checkoutBundle(
   await session.writeFile(bundle, source.bundle, 0o600)
   try {
     await session.exec(`git init --quiet ${repo}`)
-    await session.exec(`git -C ${repo} fetch --quiet ${shellQuote(bundle)} ${BUNDLE_REF}`)
+    await session.exec(`git -C ${repo} fetch --quiet ${shellQuote(bundle)} ${source.bundleRef}`)
   } finally {
     await session.exec(`rm -f ${shellQuote(bundle)}`).catch(() => '')
   }

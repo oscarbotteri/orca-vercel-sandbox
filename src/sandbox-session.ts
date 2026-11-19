@@ -45,8 +45,7 @@ function wrap(sandbox: Sandbox): SandboxSession {
       }
       return finished.stdout()
     },
-    writeFile: (path, content, mode) =>
-      sandbox.writeFiles([{ path, content: Buffer.from(content), mode }]),
+    writeFile: (path, content, mode) => sandbox.writeFiles([{ path, content, mode }]),
     async delete() {
       await sandbox.delete()
     },
