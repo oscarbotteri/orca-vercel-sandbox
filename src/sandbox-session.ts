@@ -14,6 +14,12 @@ export interface ExecOptions {
 // What `create` needs from a sandbox, so tests can stand in for Vercel.
 export interface SandboxSession {
   name: string
+  // Vercel's status when the sandbox was looked up: running, stopped...
+  status: string
+  // The published URL of a port; throws when the port is not published.
+  domain(port: number): string
+  // Adds this long to the time before Vercel stops the sandbox.
+  extendTimeout(durationMs: number): Promise<void>
   // Runs a shell command and returns its stdout; a non-zero exit throws.
   exec(command: string, options?: ExecOptions): Promise<string>
   writeFile(path: string, content: string | Uint8Array, mode: number): Promise<void>
@@ -49,6 +55,9 @@ export interface SandboxProvider {
 function wrap(sandbox: Sandbox): SandboxSession {
   return {
     name: sandbox.name,
+    status: sandbox.status,
+    domain: (port) => sandbox.domain(port),
+    extendTimeout: (durationMs) => sandbox.extendTimeout(durationMs),
     async exec(command, { sudo = false, background = false } = {}) {
       const params = { cmd: 'sh', args: ['-c', command], sudo }
       if (background) {
