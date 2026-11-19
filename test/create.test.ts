@@ -282,6 +282,11 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
     expect(config).toContain(`proxy ${name}`)
   })
 
+  it('records the workspace for list', async () => {
+    const { run, name } = await create()
+    expect(readFileSync(join(run.home, 'state', `${name}.workspace`), 'utf8')).toMatch(/\(.+\)\n$/)
+  })
+
   it('logs the sandbox name and timings, never the key', async () => {
     const { run, name } = await create()
     expect(run.readLog()).toContain(`create ${name}`)
@@ -309,6 +314,7 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
     expect(sandboxes.deleted).toEqual([name])
     expect(existsSync(join(run.home, 'keys', name))).toBe(false)
     expect(existsSync(join(run.home, 'keys', `${name}.pub`))).toBe(false)
+    expect(existsSync(join(run.home, 'state', `${name}.workspace`))).toBe(false)
     const config = existsSync(join(run.home, 'ssh_config'))
       ? readFileSync(join(run.home, 'ssh_config'), 'utf8')
       : ''

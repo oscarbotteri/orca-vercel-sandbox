@@ -63,8 +63,10 @@ export function userConfigHasInclude(path: string, line: string): boolean {
   return current !== undefined && hasInclude(current, line)
 }
 
+const BEGIN_MARKER = '# vercel-orca begin '
+
 function markers(name: string): [string, string] {
-  return [`# vercel-orca begin ${name}`, `# vercel-orca end ${name}`]
+  return [`${BEGIN_MARKER}${name}`, `# vercel-orca end ${name}`]
 }
 
 const SSH_USER = /^[A-Za-z0-9._-]+$/
@@ -121,4 +123,14 @@ export function removeSandboxHost(sshConfigPath: string, name: string): void {
   const current = readIfExists(sshConfigPath)
   if (current === undefined) return
   writeFileSync(sshConfigPath, stripBlock(current, name), { mode: 0o600 })
+}
+
+// The sandboxes that have a block in the adapter's ssh_config.
+export function listSandboxHosts(sshConfigPath: string): string[] {
+  const config = readIfExists(sshConfigPath)
+  if (config === undefined) return []
+  return config
+    .split('\n')
+    .filter((line) => line.startsWith(BEGIN_MARKER))
+    .map((line) => line.slice(BEGIN_MARKER.length))
 }

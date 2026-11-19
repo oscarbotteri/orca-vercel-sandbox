@@ -7,13 +7,14 @@ import { type AdapterHome, resolveHome } from './home.ts'
 import { shellQuote, wrapperPath } from './install.ts'
 import { BRIDGE_PORT } from './lifecycle-payload.ts'
 import { checkoutBundle } from './sandbox-checkout.ts'
-import type { SandboxSession } from './sandbox-session.ts'
+import { SANDBOX_PREFIX, type SandboxSession } from './sandbox-session.ts'
 import { installSshBridge, readIdentity, startSshBridge } from './sandbox-ssh.ts'
 import { writeSandboxState } from './sandbox-state.ts'
 import { readSettings } from './settings.ts'
 import { addSandboxHost } from './ssh-config.ts'
 import { generateKey } from './ssh-keys.ts'
 import { verifySshWithBridgeLog } from './ssh-verify.ts'
+import { recordWorkspace, workspaceLabel } from './workspaces.ts'
 
 // 128 plus the signal number, as a shell reports a process killed by it.
 const CANCEL_EXIT_CODES: Record<CancelSignal, number> = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 }
@@ -38,6 +39,7 @@ async function provision(
   await startSshBridge(session)
   const projectRoot = await checkoutBundle(session, identity, source)
   const proxyCommand = `${shellQuote(wrapperPath(home))} proxy ${name}`
+  recordWorkspace(home, name, workspaceLabel(source))
   addSandboxHost(home.sshConfig, {
     name,
     user: identity.user,
@@ -60,7 +62,7 @@ async function provision(
 async function runCreate(context: CommandContext): Promise<void> {
   const { logger, sandboxes, stdout, process } = context
   const home = resolveHome(context.env)
-  const name = `orca-${randomBytes(3).toString('hex')}`
+  const name = `${SANDBOX_PREFIX}${randomBytes(3).toString('hex')}`
   const provider = sandboxes()
   // Read first, so a bad config.json costs nothing.
   const settings = readSettings(home)

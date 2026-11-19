@@ -29,7 +29,18 @@ export interface SandboxRequest {
   settings: SandboxSettings
 }
 
+export interface SandboxSummary {
+  name: string
+  // Vercel's own status: running, stopped, failed...
+  status: string
+}
+
+// Every sandbox the plugin creates is named with this prefix.
+export const SANDBOX_PREFIX = 'orca-'
+
 export interface SandboxProvider {
+  // The plugin's sandboxes on Vercel, whether or not a workspace still uses them.
+  list(): Promise<SandboxSummary[]>
   create(request: SandboxRequest): Promise<SandboxSession>
   // Looks a sandbox up; `resume` also starts it again if it is stopped.
   get(name: string, options?: { resume?: boolean }): Promise<SandboxSession>
@@ -80,6 +91,18 @@ export function sandboxCreateParams({ name, ports, settings }: SandboxRequest) {
 
 export function vercelSandboxes(credentials: VercelCredentials, network: Network): SandboxProvider {
   return {
+    async list() {
+      try {
+        const page = await Sandbox.list({
+          namePrefix: SANDBOX_PREFIX,
+          ...credentials,
+          fetch: network.fetch,
+        })
+        return (await page.toArray()).map(({ name, status }) => ({ name, status }))
+      } catch (error) {
+        throw new UserError(`cannot list sandboxes on Vercel: ${reasonOf(error)}`, { cause: error })
+      }
+    },
     async create(request) {
       const { name } = request
       try {

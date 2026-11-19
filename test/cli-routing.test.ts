@@ -25,9 +25,18 @@ describe('vercel-orca routing', () => {
   it.each(
     SUBCOMMANDS.filter(
       (name) =>
-        !['create', 'suspend', 'resume', 'destroy', 'proxy', 'setup', 'uninstall', 'pull'].includes(
-          name,
-        ),
+        ![
+          'create',
+          'suspend',
+          'resume',
+          'destroy',
+          'proxy',
+          'setup',
+          'uninstall',
+          'pull',
+          'doctor',
+          'list',
+        ].includes(name),
     ),
   )('routes %s and says clearly that it is not implemented yet', async (name) => {
     const result = await runCli([name, 'orca-abc123'], { stdin: payload })
