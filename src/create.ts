@@ -6,7 +6,7 @@ import { type AdapterHome, resolveHome } from './home.ts'
 import { shellQuote, wrapperPath } from './install.ts'
 import { BRIDGE_PORT } from './lifecycle-payload.ts'
 import type { SandboxSession } from './sandbox-session.ts'
-import { installSshBridge, readIdentity, startSshBridge } from './sandbox-ssh.ts'
+import { installSshBridge, readBridgeLog, readIdentity, startSshBridge } from './sandbox-ssh.ts'
 import { addSandboxHost, removeSandboxHost } from './ssh-config.ts'
 import { generateKey, removeKey } from './ssh-keys.ts'
 
@@ -69,7 +69,13 @@ async function provision(
     identityFile: key.privatePath,
     proxyCommand,
   })
-  await verifySsh(home, name, context.env)
+  try {
+    await verifySsh(home, name, context.env)
+  } catch (error) {
+    const bridge = await readBridgeLog(session).catch(() => '')
+    if (!bridge) throw error
+    throw new UserError(`${reasonOf(error)}; the bridge said:\n${bridge}`, { cause: error })
+  }
   return {
     sshTarget: { host: name, port: 22, username: identity.user, proxyCommand },
     projectRoot: `${identity.home}/work`,
@@ -94,8 +100,9 @@ async function runCreate(context: CommandContext): Promise<void> {
       logger.error(`create ${name}: could not delete the sandbox: ${reasonOf(deleteError)}`)
     })
     try {
-      removeSandboxHost(home.sshConfig, name)
+      // The private key first: it is the only sensitive file.
       removeKey(home, name)
+      removeSandboxHost(home.sshConfig, name)
     } catch (cleanupError) {
       logger.error(`create ${name}: could not remove local files: ${reasonOf(cleanupError)}`)
     }

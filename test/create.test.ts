@@ -1,4 +1,14 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -44,7 +54,7 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
   }
 
   // Runs `create` against a fake sandbox; the fake Vercel API learns each name the proxy looks up.
-  async function create(options: FakeSandboxOptions = {}) {
+  async function create(options: FakeSandboxOptions = {}, userHome?: string) {
     sandboxes = fakeSandboxes(sshd, {
       ...options,
       onCreate: (name) =>
@@ -54,6 +64,7 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
       env: { ...CREDENTIAL_ENV, FAKE_API_URL: api.url, FAKE_BRIDGE_PORT: String(bridge.port) },
       sandboxes,
       network: { apiUrl: api.url, bridgePort: bridge.port },
+      userHome,
       beforeRun: installShim,
     })
     return { run, name: sandboxes.created[0]?.name as string }
@@ -139,5 +150,50 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
     expect(run.stdout).toBe('')
     expect(run.stderr).toContain('SSH connection')
     expect(sandboxes.deleted).toHaveLength(1)
+  })
+
+  it('pins the websocat download by checksum and architecture', async () => {
+    await create()
+    const install = sandboxes.commands.find((command) => command.includes('curl')) as string
+    expect(install).toContain('sha256sum -c')
+    expect(install).toContain('x86_64')
+    expect(install.indexOf('sha256sum -c')).toBeLessThan(install.indexOf('chmod 755'))
+  })
+
+  it('sends the bridge output to a log it reads back when the SSH check fails', async () => {
+    const { run } = await create({ withholdKey: true, bridgeLog: 'websocat: address in use' })
+    expect(sandboxes.commands.join('\n')).toContain('websocat.log')
+    expect(run.stderr).toContain('websocat: address in use')
+  })
+
+  it.each([
+    ['a home with a space', { home: '/home/a b' }],
+    ['a home with a shell metacharacter', { home: '/home/x;rm -rf /' }],
+    ['a user with a space', { user: 'a b' }],
+  ])('refuses %s in the sandbox identity', async (_label, identity) => {
+    const { run, name } = await create(identity)
+    expect(run.code).toBe(1)
+    expect(run.stdout).toBe('')
+    expect(run.stderr).toContain('unexpected user or home')
+    expect(sandboxes.deleted).toEqual([name])
+  })
+
+  it('still removes the private key when the ssh_config cleanup fails', async () => {
+    const userHome = mkdtempSync(join(tmpdir(), 'vercel-orca-create-'))
+    const sshConfig = join(userHome, '.vercel-orca', 'ssh_config')
+    const { run, name } = await create(
+      {
+        failOn: 'openssh-server',
+        // A directory where the file was makes the host block's removal throw.
+        onDelete: () => {
+          rmSync(sshConfig, { force: true })
+          mkdirSync(sshConfig)
+        },
+      },
+      userHome,
+    )
+    expect(run.code).toBe(1)
+    expect(existsSync(join(run.home, 'keys', name))).toBe(false)
+    rmSync(userHome, { recursive: true, force: true })
   })
 })

@@ -13,6 +13,12 @@ export interface FakeSandboxOptions {
   failOn?: string
   // Stops the sshd from trusting the key create writes, so the SSH check fails.
   withholdKey?: boolean
+  // What the sandbox reports for `id -un` and $HOME, and what its bridge log holds.
+  user?: string
+  home?: string
+  bridgeLog?: string
+  // Runs when the sandbox is deleted, before the local cleanup follows.
+  onDelete?(): void
   // Called with each new sandbox's name, e.g. to make the fake Vercel API know it.
   onCreate?(name: string): void
 }
@@ -37,8 +43,9 @@ export function fakeSandboxes(sshd: LocalSshd, options: FakeSandboxOptions = {})
           if (options.failOn && command.includes(options.failOn)) {
             throw new Error(`command failed: ${command}`)
           }
-          if (command === 'id -un') return sshd.user
-          if (command === 'printf %s "$HOME"') return HOME
+          if (command === 'id -un') return options.user ?? sshd.user
+          if (command === 'printf %s "$HOME"') return options.home ?? HOME
+          if (command.startsWith('tail ')) return options.bridgeLog ?? ''
           return ''
         },
         async writeFile(path, content, mode) {
@@ -47,6 +54,7 @@ export function fakeSandboxes(sshd: LocalSshd, options: FakeSandboxOptions = {})
         },
         async delete() {
           fake.deleted.push(request.name)
+          options.onDelete?.()
         },
       }
       return session
