@@ -4,6 +4,7 @@ import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { SandboxProvider, SandboxSession } from '../src/sandbox-session.ts'
 import { CREDENTIAL_ENV, sandboxBody } from './support/fake-network.ts'
 import { type FakeVercelApi, startFakeVercelApi } from './support/fake-vercel-api.ts'
 import { type LocalSshd, sshdAvailable, startLocalSshd } from './support/local-sshd.ts'
@@ -145,6 +146,57 @@ describe('vercel-orca proxy failures', () => {
       await bridge.close()
       await new Promise((resolve) => banner.close(resolve))
     }
+  })
+
+  // A sandbox whose first lookup finds it in `status`; a lookup that resumes finds it running.
+  function sandboxesIn(status: string) {
+    const commands: string[] = []
+    const lookups: boolean[] = []
+    function session(current: string): SandboxSession {
+      return {
+        name: 'orca-abc123',
+        status: current,
+        domain: (port: number) => `https://sb-fake-${port}.vercel.run`,
+        extendTimeout: async () => {},
+        exec: async (command: string) => {
+          commands.push(command)
+          return ''
+        },
+      } as unknown as SandboxSession
+    }
+    const provider = {
+      get: async (_name, { resume = false } = {}) => {
+        lookups.push(resume)
+        return session(resume ? 'running' : status)
+      },
+    } as SandboxProvider
+    return { provider, commands, lookups }
+  }
+
+  it('resumes a sandbox Vercel stopped and starts its bridge before connecting', async () => {
+    const { provider, commands, lookups } = sandboxesIn('stopped')
+    const result = await runCli(['proxy', 'orca-abc123'], {
+      env: CREDENTIAL_ENV,
+      network: { apiUrl: api.url, bridgePort: 1 },
+      sandboxes: provider,
+    })
+    expect(lookups).toEqual([false, true])
+    expect(commands).toHaveLength(2)
+    expect(commands[0]).toContain('sshd')
+    expect(commands[1]).toContain('websocat')
+    expect(result.readLog()).toContain('was stopped, resumed and started the bridge')
+    expect(result.stderr).toContain('connection to sandbox orca-abc123 failed')
+  })
+
+  it('leaves a running sandbox alone', async () => {
+    const { provider, commands, lookups } = sandboxesIn('running')
+    await runCli(['proxy', 'orca-abc123'], {
+      env: CREDENTIAL_ENV,
+      network: { apiUrl: api.url, bridgePort: 1 },
+      sandboxes: provider,
+    })
+    expect(lookups).toEqual([false])
+    expect(commands).toEqual([])
   })
 
   it('reports a bridge that cannot be reached', async () => {

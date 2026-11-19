@@ -85,6 +85,9 @@ export function fakeSandboxes(
       await options.beforeCreateResolves?.(request.name)
       const session: SandboxSession = {
         name: request.name,
+        status: 'running',
+        domain: (port: number) => `https://${request.name}-${port}.vercel.run`,
+        async extendTimeout() {},
         async exec(command: string, _options?: ExecOptions) {
           fake.commands.push(command)
           await options.onCommand?.(command)

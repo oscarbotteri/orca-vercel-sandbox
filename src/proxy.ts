@@ -1,11 +1,13 @@
 import type { Readable, Writable } from 'node:stream'
-import { Sandbox } from '@vercel/sandbox'
 import { isAsleep } from './asleep.ts'
 import type { Command, CommandContext } from './commands.ts'
-import type { VercelCredentials } from './credentials.ts'
 import { reasonOf, UserError } from './errors.ts'
 import { resolveHome } from './home.ts'
+import { keepAlive } from './keep-alive.ts'
 import { BRIDGE_PORT, SANDBOX_NAME } from './lifecycle-payload.ts'
+import type { Logger } from './logger.ts'
+import type { SandboxProvider, SandboxSession } from './sandbox-session.ts'
+import { startSshBridge } from './sandbox-ssh.ts'
 
 export interface Network {
   fetch: typeof globalThis.fetch
@@ -19,23 +21,25 @@ export interface Tunnel {
 }
 
 // Looked up on every connection and never kept: the SSH target Orca stores must not hold a URL.
-async function bridgeUrl(
+// A sandbox Vercel stopped on timeout is resumed and its bridge started again first.
+async function connectableSession(
   name: string,
-  credentials: VercelCredentials,
-  network: Network,
-): Promise<string> {
-  let sandbox: Sandbox
+  sandboxes: SandboxProvider,
+  logger: Logger,
+): Promise<SandboxSession> {
+  const found = await sandboxes.get(name)
+  if (found.status === 'running' || found.status === 'pending') return found
+  const session = await sandboxes.get(name, { resume: true })
+  await startSshBridge(session)
+  logger.info(`proxy ${name}: was ${found.status}, resumed and started the bridge`)
+  return session
+}
+
+function bridgeUrl(session: SandboxSession): string {
   try {
-    sandbox = await Sandbox.get({ name, ...credentials, fetch: network.fetch })
+    return session.domain(BRIDGE_PORT).replace(/^http/, 'ws')
   } catch (error) {
-    throw new UserError(`cannot look up sandbox ${name} on Vercel: ${reasonOf(error)}`, {
-      cause: error,
-    })
-  }
-  try {
-    return sandbox.domain(BRIDGE_PORT).replace(/^http/, 'ws')
-  } catch (error) {
-    throw new UserError(`sandbox ${name} publishes no SSH bridge port (${BRIDGE_PORT})`, {
+    throw new UserError(`sandbox ${session.name} publishes no SSH bridge port (${BRIDGE_PORT})`, {
       cause: error,
     })
   }
@@ -133,9 +137,10 @@ export function pipeThrough(
 
 async function runProxy({
   args,
-  credentials,
   env,
+  logger,
   network,
+  sandboxes,
   tunnel,
 }: CommandContext): Promise<void> {
   const name = args[0]
@@ -145,7 +150,9 @@ async function runProxy({
   if (isAsleep(resolveHome(env), name)) {
     throw new UserError(`sandbox ${name} is asleep; wake the workspace in Orca to connect`)
   }
-  const url = await bridgeUrl(name, credentials(), network)
+  const session = await connectableSession(name, sandboxes(), logger)
+  const url = bridgeUrl(session)
+  const stopKeepAlive = keepAlive(session, logger)
   try {
     await pipeThrough(network.webSocket(url), tunnel)
   } catch (error) {
@@ -153,6 +160,7 @@ async function runProxy({
       cause: error,
     })
   } finally {
+    stopKeepAlive()
     // ssh closing its end must not keep this process alive waiting on stdin.
     tunnel.input.destroy()
   }
