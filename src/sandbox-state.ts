@@ -1,6 +1,7 @@
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { UserError } from './errors.ts'
+import type { CheckoutSource } from './git-bundle.ts'
 import type { AdapterHome } from './home.ts'
 
 // What `destroy` needs to know about a sandbox that only `create` saw.
@@ -11,6 +12,8 @@ export interface SandboxState {
   projectRoot: string
   // The commit the checkout started from: work is unpushed when it is not reachable from here.
   baseCommit: string
+  // What `list` shows for the workspace: the repository and the branch (or commit) it was cut from.
+  workspace: string
 }
 
 function statePath(home: AdapterHome, name: string): string {
@@ -34,4 +37,17 @@ export function readSandboxState(home: AdapterHome, name: string): SandboxState 
 
 export function removeSandboxState(home: AdapterHome, name: string): void {
   rmSync(statePath(home, name), { force: true })
+}
+
+export function workspaceLabel(source: CheckoutSource): string {
+  return `${source.repoName} (${source.branch ?? `detached at ${source.commit.slice(0, 7)}`})`
+}
+
+// Undefined when there is no usable record: `list` then shows a placeholder instead of failing.
+export function workspaceOf(home: AdapterHome, name: string): string | undefined {
+  try {
+    return readSandboxState(home, name).workspace || undefined
+  } catch {
+    return undefined
+  }
 }

@@ -6,6 +6,7 @@ import type {
   SandboxProvider,
   SandboxRequest,
   SandboxSession,
+  SandboxSummary,
 } from '../../src/sandbox-session.ts'
 import type { LocalSshd } from './local-sshd.ts'
 
@@ -42,6 +43,8 @@ export interface FakeSandboxOptions {
   onCommand?(command: string): void | Promise<void>
   // Holds provider.create (the sandbox exists on Vercel, the session has not come back yet).
   beforeCreateResolves?(name: string): Promise<void>
+  // Sandboxes that exist on Vercel without this fake having created them (a killed create).
+  existing?: SandboxSummary[]
   // Called with each new sandbox's name, e.g. to make the fake Vercel API know it.
   onCreate?(name: string): void
 }
@@ -64,6 +67,12 @@ export function fakeSandboxes(
     stopped: [],
     read: [],
     looked: [],
+    async list() {
+      const made = [...sessions.keys()]
+        .filter((name) => !fake.deleted.includes(name))
+        .map((name) => ({ name, status: fake.stopped.includes(name) ? 'stopped' : 'running' }))
+      return [...made, ...(options.existing ?? [])]
+    },
     async get(name, { resume = false } = {}) {
       fake.looked.push({ name, resume })
       const known = sessions.get(name)

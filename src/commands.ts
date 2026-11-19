@@ -1,9 +1,10 @@
 import { createCommand } from './create.ts'
 import type { VercelCredentials } from './credentials.ts'
 import { destroyCommand } from './destroy.ts'
-import { UserError } from './errors.ts'
+import { doctorCommand } from './doctor.ts'
 import { resumeCommand, suspendCommand } from './lifecycle.ts'
 import type { LifecyclePayload } from './lifecycle-payload.ts'
+import { listCommand } from './list.ts'
 import type { Logger, Sink } from './logger.ts'
 import { type Network, proxyCommand, type Tunnel } from './proxy.ts'
 import { pullCommand } from './pull.ts'
@@ -50,16 +51,6 @@ export interface Command {
   run(context: CommandContext): Promise<void>
 }
 
-function notImplemented(name: string): Command['run'] {
-  return async () => {
-    throw new UserError(`vercel-orca ${name} is not implemented yet`)
-  }
-}
-
-function command(name: string, readsPayload = false): [string, Command] {
-  return [name, { readsPayload, run: notImplemented(name) }]
-}
-
 export const COMMANDS: ReadonlyMap<string, Command> = new Map([
   ['create', createCommand],
   ['suspend', suspendCommand],
@@ -68,7 +59,7 @@ export const COMMANDS: ReadonlyMap<string, Command> = new Map([
   ['proxy', proxyCommand],
   ['setup', setupCommand],
   ['uninstall', uninstallCommand],
-  command('doctor'),
+  ['doctor', doctorCommand],
   ['pull', pullCommand],
-  command('list'),
+  ['list', listCommand],
 ])

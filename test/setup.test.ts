@@ -51,8 +51,9 @@ describe('vercel-orca setup', () => {
     const wrapper = join(result.home, 'bin', 'vercel-orca')
     expect(readFileSync(wrapper, 'utf8')).toContain(join(result.home, 'lib', 'cli.ts'))
     expect(existsSync(join(result.home, 'lib', 'main.ts'))).toBe(true)
-    const ran = spawnSync(wrapper, ['list'], { encoding: 'utf8', env: result.env })
-    expect(ran.stderr).toContain('vercel-orca list is not implemented yet')
+    const ran = spawnSync(wrapper, ['frobnicate'], { encoding: 'utf8', env: result.env })
+    expect(ran.status).toBe(2)
+    expect(ran.stderr).toContain('unknown command "frobnicate"')
   })
 
   it('asks before touching ~/.ssh/config and leaves it alone when declined', async () => {

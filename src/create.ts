@@ -7,9 +7,9 @@ import { type AdapterHome, resolveHome } from './home.ts'
 import { shellQuote, wrapperPath } from './install.ts'
 import { BRIDGE_PORT } from './lifecycle-payload.ts'
 import { checkoutBundle } from './sandbox-checkout.ts'
-import type { SandboxSession } from './sandbox-session.ts'
+import { SANDBOX_PREFIX, type SandboxSession } from './sandbox-session.ts'
 import { installSshBridge, readIdentity, startSshBridge } from './sandbox-ssh.ts'
-import { writeSandboxState } from './sandbox-state.ts'
+import { workspaceLabel, writeSandboxState } from './sandbox-state.ts'
 import { readSettings } from './settings.ts'
 import { addSandboxHost } from './ssh-config.ts'
 import { generateKey } from './ssh-keys.ts'
@@ -49,6 +49,7 @@ async function provision(
     repoPath: source.repoPath,
     projectRoot,
     baseCommit: source.commit,
+    workspace: workspaceLabel(source),
   })
   return {
     sshTarget: { host: name, port: 22, username: identity.user, proxyCommand },
@@ -60,7 +61,7 @@ async function provision(
 async function runCreate(context: CommandContext): Promise<void> {
   const { logger, sandboxes, stdout, process } = context
   const home = resolveHome(context.env)
-  const name = `orca-${randomBytes(3).toString('hex')}`
+  const name = `${SANDBOX_PREFIX}${randomBytes(3).toString('hex')}`
   const provider = sandboxes()
   // Read first, so a bad config.json costs nothing.
   const settings = readSettings(home)
