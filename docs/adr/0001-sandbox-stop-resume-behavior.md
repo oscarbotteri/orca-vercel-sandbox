@@ -4,7 +4,7 @@ Status: accepted (November 19, 2026)
 
 ## Context
 
-The plugin sleeps a workspace by stopping its sandbox and wakes it by resuming it. Three PRD open questions depended on what a real Vercel Sandbox keeps across that cycle: what survives besides files (and so where the bridge binary lives), whether the published URL is stable, and whether a published port must be set again.
+The plugin sleeps a workspace by stopping its sandbox and wakes it by resuming it. Three PRD open questions (since answered here and removed from the PRD) depended on what a real Vercel Sandbox keeps across that cycle: what survives besides files (and so where the bridge binary lives), whether the published URL is stable, and whether a published port must be set again.
 
 ## Findings
 

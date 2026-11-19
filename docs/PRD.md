@@ -175,9 +175,9 @@ Not planned, only noted:
 
 ## Open questions
 
-1. **Does anything survive a stop besides files?** Answered in [ADR 0001](adr/0001-sandbox-stop-resume-behavior.md): files yes, including `/tmp` (the bridge binary lives there; running it from `/tmp` is not yet tested); processes no.
-2. **Is the published URL stable across stop and resume?** Answered in ADR 0001: yes in one short test; the proxy still looks it up on every connection.
-3. **Does a published port need to be set again after resume?** Answered in ADR 0001: no in one test; the server behind the port must be started again.
-4. **How long does the timeout extension need to be** to keep a connected sandbox alive without letting a forgotten one run for a day?
-5. **Default image or custom image?** Installing `sshd` and `websocat` on every create (and on every wake, if installed packages do not survive a stop; untested) is slower but needs no registry setup.
-6. **How should the plugin pick up Vercel credentials?** A token in the shell profile (as Prized does with its API key), or the `sandbox login` session.
+Stop and resume behavior is settled in [ADR 0001](adr/0001-sandbox-stop-resume-behavior.md).
+
+1. **Can the bridge binary run from `/tmp`, and do installed packages survive a stop?** The ADR only tested files we wrote. A `noexec` mount on `/tmp` would break the bridge, and if `sshd` and `websocat` do not survive, wake must install them again.
+2. **How long does the timeout extension need to be** to keep a connected sandbox alive without letting a forgotten one run for a day?
+3. **Default image or custom image?** Installing `sshd` and `websocat` on every create (and on every wake, if installed packages do not survive a stop) is slower but needs no registry setup.
+4. **How should the plugin pick up Vercel credentials?** A token in the shell profile (as Prized does with its API key), or the `sandbox login` session.
