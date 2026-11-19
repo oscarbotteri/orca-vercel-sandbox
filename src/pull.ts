@@ -5,7 +5,7 @@ import { parseArgs } from 'node:util'
 import { isAsleep } from './asleep.ts'
 import type { Command, CommandContext } from './commands.ts'
 import { UserError } from './errors.ts'
-import { git } from './git-bundle.ts'
+import { assertBranchName, git } from './git-bundle.ts'
 import { resolveHome } from './home.ts'
 import { shellQuote } from './install.ts'
 import { SANDBOX_NAME } from './lifecycle-payload.ts'
@@ -59,21 +59,6 @@ async function localBranchExists(
     () => true,
     () => false,
   )
-}
-
-// Git decides what a branch name is; a leading dash is refused since the name reaches a command line.
-async function assertBranchName(
-  repo: string,
-  branch: string,
-  env: NodeJS.ProcessEnv,
-): Promise<void> {
-  const valid =
-    !branch.startsWith('-') &&
-    (await git(repo, ['check-ref-format', '--branch', branch], env).then(
-      () => true,
-      () => false,
-    ))
-  if (!valid) throw new UserError(`unsupported branch name: ${branch}`)
 }
 
 // The sandbox checkout's current branch, or undefined when HEAD is detached.
