@@ -6,7 +6,6 @@ export interface LifecyclePayload {
 
 interface RawPayload {
   recipeResult?: {
-    connection?: { target?: { host?: unknown } }
     userData?: { resourceId?: unknown }
   }
 }
@@ -18,7 +17,7 @@ function text(value: unknown): string | undefined {
 }
 
 // What Orca pipes to suspend, resume and destroy: the result `create` printed, wrapped with the
-// phase. The sandbox is userData.resourceId, or the SSH host if that is missing.
+// phase. The sandbox is userData.resourceId.
 export function parseLifecyclePayload(raw: string): LifecyclePayload {
   if (!raw.trim()) throw new UserError('Orca sent no lifecycle payload on stdin')
   let parsed: RawPayload
@@ -28,7 +27,7 @@ export function parseLifecyclePayload(raw: string): LifecyclePayload {
     throw new UserError("Orca's lifecycle payload is not JSON")
   }
   const result = parsed?.recipeResult
-  const sandbox = text(result?.userData?.resourceId) ?? text(result?.connection?.target?.host)
+  const sandbox = text(result?.userData?.resourceId)
   if (!sandbox || !SANDBOX_NAME.test(sandbox)) {
     throw new UserError('the lifecycle payload names no sandbox')
   }

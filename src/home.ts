@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs'
+import { chmodSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -28,5 +28,7 @@ export function resolveHome(env: NodeJS.ProcessEnv): AdapterHome {
 export function ensureHome(home: AdapterHome): void {
   for (const dir of [home.root, home.bin, home.keys, home.state]) {
     mkdirSync(dir, { recursive: true, mode: 0o700 })
+    // mkdir's mode only applies to directories it creates, and the umask can narrow it.
+    chmodSync(dir, 0o700)
   }
 }

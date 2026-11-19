@@ -1,4 +1,4 @@
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, chmodSync } from 'node:fs'
 
 export interface Logger {
   info(message: string): void
@@ -40,6 +40,8 @@ export function createLogger(options: LoggerOptions): Logger {
   function write(level: 'info' | 'error', message: string): void {
     const clean = redact(message, options.secrets)
     appendFileSync(options.file, `${new Date().toISOString()} ${level} ${clean}\n`, { mode: 0o600 })
+    // appendFile's mode only applies when it creates the file.
+    chmodSync(options.file, 0o600)
     options.stderr.write(`${clean}\n`)
   }
   return {

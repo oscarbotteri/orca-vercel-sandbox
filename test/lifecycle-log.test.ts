@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, statSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -26,6 +26,22 @@ describe('lifecycle.log', () => {
     }
     expect(statSync(result.home).mode & 0o777).toBe(0o700)
     expect(statSync(join(result.home, 'lifecycle.log')).mode & 0o777).toBe(0o600)
+  })
+
+  it('tightens a log and adapter directories that already exist with loose permissions', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'vercel-orca-loose-'))
+    for (const dir of [home, join(home, 'keys')]) {
+      mkdirSync(dir, { recursive: true })
+      chmodSync(dir, 0o755)
+    }
+    writeFileSync(join(home, 'lifecycle.log'), '')
+    chmodSync(join(home, 'lifecycle.log'), 0o644)
+
+    await runCli(['doctor'], { env: { VERCEL_ORCA_HOME: home } })
+
+    expect(statSync(home).mode & 0o777).toBe(0o700)
+    expect(statSync(join(home, 'keys')).mode & 0o777).toBe(0o700)
+    expect(statSync(join(home, 'lifecycle.log')).mode & 0o777).toBe(0o600)
   })
 
   it('never writes the Vercel token, to the log or to the terminal', async () => {

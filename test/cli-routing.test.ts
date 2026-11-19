@@ -76,11 +76,24 @@ describe('vercel-orca routing', () => {
     expect(result.stderr).toContain('names no sandbox')
   })
 
-  it('falls back to the SSH host when userData has no resourceId', async () => {
+  it('does not take the SSH host for the sandbox', async () => {
     const stdin = JSON.stringify({
       recipeResult: { connection: { target: { host: 'orca-fromhost' } } },
     })
     const result = await runCli(['suspend'], { stdin })
-    expect(result.readLog()).toContain('orca-fromhost')
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('names no sandbox')
+  })
+
+  it('refuses an empty resourceId even when the SSH host looks valid', async () => {
+    const stdin = JSON.stringify({
+      recipeResult: {
+        userData: { resourceId: '' },
+        connection: { target: { host: 'orca-fromhost' } },
+      },
+    })
+    const result = await runCli(['suspend'], { stdin })
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('names no sandbox')
   })
 })
