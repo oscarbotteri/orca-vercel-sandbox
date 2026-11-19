@@ -2,6 +2,7 @@ import type { VercelCredentials } from './credentials.ts'
 import { UserError } from './errors.ts'
 import type { LifecyclePayload } from './lifecycle-payload.ts'
 import type { Logger, Sink } from './logger.ts'
+import { type Network, proxyCommand, type Tunnel } from './proxy.ts'
 import { setupCommand, uninstallCommand } from './setup.ts'
 
 export interface CommandContext {
@@ -12,6 +13,10 @@ export interface CommandContext {
   logger: Logger
   // Only `create` writes here: its JSON result is the one thing Orca reads from stdout.
   stdout: Sink
+  // The Vercel API and the published URLs: injected so tests can point them at local servers.
+  network: Network
+  // What ssh sends and receives; only `proxy` uses it, since stdout belongs to `create`.
+  tunnel: Tunnel
   // Resolved on demand so a command that never calls the API does not need them.
   credentials(): VercelCredentials
   // Present for suspend, resume and destroy, which Orca feeds a lifecycle payload.
@@ -38,7 +43,7 @@ export const COMMANDS: ReadonlyMap<string, Command> = new Map([
   command('suspend', true),
   command('resume', true),
   command('destroy', true),
-  command('proxy'),
+  ['proxy', proxyCommand],
   ['setup', setupCommand],
   ['uninstall', uninstallCommand],
   command('doctor'),

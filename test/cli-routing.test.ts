@@ -22,7 +22,7 @@ const SUBCOMMANDS = [
 ]
 
 describe('vercel-orca routing', () => {
-  it.each(SUBCOMMANDS.filter((name) => !['setup', 'uninstall'].includes(name)))(
+  it.each(SUBCOMMANDS.filter((name) => !['proxy', 'setup', 'uninstall'].includes(name)))(
     'routes %s and says clearly that it is not implemented yet',
     async (name) => {
       const result = await runCli([name, 'orca-abc123'], { stdin: payload })

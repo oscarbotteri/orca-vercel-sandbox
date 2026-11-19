@@ -1,8 +1,12 @@
 import { COMMANDS, type Command } from './commands.ts'
 import { readEnv, resolveCredentials, VARIABLES } from './credentials.ts'
+import { reasonOf } from './errors.ts'
 import { ensureHome, resolveHome } from './home.ts'
 import { parseLifecyclePayload } from './lifecycle-payload.ts'
 import { createLogger, type Logger, type Sink } from './logger.ts'
+import type { Network, Tunnel } from './proxy.ts'
+
+export type { Network, Tunnel }
 
 export interface RunIo {
   env: NodeJS.ProcessEnv
@@ -10,6 +14,8 @@ export interface RunIo {
   confirm(question: string): Promise<boolean>
   stdout: Sink
   stderr: Sink
+  network: Network
+  tunnel: Tunnel
 }
 
 const EXIT_FAILED = 1
@@ -59,13 +65,15 @@ async function runCommand(
       confirm: io.confirm,
       logger,
       stdout: io.stdout,
+      network: io.network,
+      tunnel: io.tunnel,
       credentials: () => resolveCredentials(io.env),
       payload,
     })
     logger.info(`${name}${subject} done in ${Date.now() - started}ms`)
     return 0
   } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error)
+    const reason = reasonOf(error)
     logger.error(`${name}${subject} failed after ${Date.now() - started}ms: ${reason}`)
     return EXIT_FAILED
   }
