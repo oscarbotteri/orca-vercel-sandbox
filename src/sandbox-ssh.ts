@@ -77,6 +77,9 @@ export async function installSshBridge(
     { sudo: true },
   )
   await session.exec('ssh-keygen -A', { sudo: true })
+  // The sandbox user's account is locked (password "!"), and sshd refuses a locked account even
+  // for a key. "*" is no password at all, which sshd accepts and which still cannot log in by one.
+  await session.exec(`usermod -p '*' ${identity.user}`, { sudo: true })
   await session.exec(
     `mkdir -p ${DIR} ${identity.home}/work ${identity.home}/.ssh && chmod 700 ${identity.home}/.ssh`,
   )
