@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { UserError } from '../src/errors.ts'
 import { sandboxCreateParams } from '../src/sandbox-session.ts'
 import { installSshBridge } from '../src/sandbox-ssh.ts'
 import { parseSettings, toCreateParams } from '../src/settings.ts'
@@ -55,6 +56,9 @@ describe('setup flags', () => {
     [['--vcpus', 'many'], 'vcpus must be a positive whole number'],
     [['--vcpus', '0'], 'vcpus must be a positive whole number'],
     [['--timeout-minutes', '1.5'], 'timeoutMinutes must be a positive whole number'],
+    [['--vcpus', '3'], '3 vCPUs is not supported'],
+    [['--vcpus', '64'], '64 vCPUs is not supported'],
+    [['--memory-mb', '6144'], '3 vCPUs is not supported'],
     [['--memory-mb', '3000'], 'memoryMb must be a multiple of 2048'],
     [['--vcpus', '2', '--memory-mb', '2048'], 'does not match 2 vCPUs'],
     [['--region', 'eu west'], 'region must be text without spaces'],
@@ -126,11 +130,23 @@ describe('Vercel create parameters', () => {
 })
 
 describe('image support', () => {
-  it('explains an image without apt-get', async () => {
-    const sandboxes = fakeSandboxes({ user: 'u' } as LocalSshd, { failOn: 'command -v apt-get' })
+  async function install(error: Error): Promise<unknown> {
+    const sandboxes = fakeSandboxes({ user: 'u' } as LocalSshd, {
+      onCommand(command) {
+        if (command.includes('command -v apt-get')) throw error
+      },
+    })
     const session = await sandboxes.create({ name: 'n', ports: [], settings: {} })
-    await expect(installSshBridge(session, { user: 'u', home: '/h' }, 'key')).rejects.toThrow(
-      'only Debian and Ubuntu based images are supported',
-    )
+    return installSshBridge(session, { user: 'u', home: '/h' }, 'key').catch((e: unknown) => e)
+  }
+
+  it('explains an image without apt-get', async () => {
+    const failure = await install(new UserError('sandbox command failed (exit 1)'))
+    expect(failure).toHaveProperty('message', expect.stringContaining('only Debian and Ubuntu'))
+  })
+
+  it('does not blame the image for an API or network error', async () => {
+    const failure = await install(new Error('fetch failed'))
+    expect(failure).toHaveProperty('message', 'fetch failed')
   })
 })

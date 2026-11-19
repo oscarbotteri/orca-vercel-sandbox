@@ -14,6 +14,13 @@ export interface SandboxSettings {
 // Vercel gives each vCPU 2048 MB, so memory is not a separate knob: it must agree with the vCPUs.
 const MB_PER_VCPU = 2048
 
+// Vercel offers 1 vCPU or an even count; the ceiling per plan is left to the API to enforce.
+const MAX_VCPUS = 32
+
+function isSupportedVcpus(count: number): boolean {
+  return count === 1 || (count % 2 === 0 && count <= MAX_VCPUS)
+}
+
 export const SETTING_FLAGS = {
   '--image': 'image',
   '--vcpus': 'vcpus',
@@ -66,6 +73,12 @@ export function parseSettings(raw: unknown, source: string): SandboxSettings {
     const { vcpus, memoryMb } = settings
     if (vcpus !== undefined && memoryMb !== undefined && memoryMb !== vcpus * MB_PER_VCPU) {
       throw new UserError(`memoryMb ${memoryMb} does not match ${vcpus} vCPUs (2048 MB per vCPU)`)
+    }
+    const effective = vcpus ?? (memoryMb === undefined ? undefined : memoryMb / MB_PER_VCPU)
+    if (effective !== undefined && !isSupportedVcpus(effective)) {
+      throw new UserError(
+        `${effective} vCPUs is not supported: use 1 or an even number up to ${MAX_VCPUS}`,
+      )
     }
   } catch (error) {
     if (error instanceof UserError) throw new UserError(`${source}: ${error.message}`)

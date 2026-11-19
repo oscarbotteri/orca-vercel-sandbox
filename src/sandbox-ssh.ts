@@ -59,7 +59,9 @@ export async function installSshBridge(
   publicKey: string,
 ): Promise<void> {
   // A custom image may not be Debian or Ubuntu; say so now rather than as an apt-get error.
-  await session.exec('command -v apt-get >/dev/null').catch(() => {
+  await session.exec('command -v apt-get >/dev/null').catch((error: unknown) => {
+    // Only a failed command means a missing apt-get; an API or network error must surface as is.
+    if (!(error instanceof UserError)) throw error
     throw new UserError(
       'the sandbox image has no apt-get: only Debian and Ubuntu based images are supported',
     )
