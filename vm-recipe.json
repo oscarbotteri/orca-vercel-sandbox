@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "vercel-sandbox",
+  "name": "Vercel Sandbox",
+  "description": "One Vercel Sandbox per workspace, reached over SSH. Sleep stops it and keeps its files; wake resumes it.",
+  "checkoutMode": "provisioned-root",
+  "create": "\"$HOME/.vercel-orca/bin/vercel-orca\" create",
+  "suspend": "\"$HOME/.vercel-orca/bin/vercel-orca\" suspend",
+  "resume": "\"$HOME/.vercel-orca/bin/vercel-orca\" resume",
+  "destroy": "\"$HOME/.vercel-orca/bin/vercel-orca\" destroy"
+}
