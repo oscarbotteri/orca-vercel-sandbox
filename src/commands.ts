@@ -8,9 +8,11 @@ import type { SandboxProvider } from './sandbox-session.ts'
 import { setupCommand, uninstallCommand } from './setup.ts'
 
 // The part of the process that `create` needs to clean up when it is cancelled.
+export type CancelSignal = 'SIGINT' | 'SIGTERM' | 'SIGHUP'
+
 export interface ProcessControl {
-  once(signal: 'SIGINT' | 'SIGTERM', listener: () => void): unknown
-  off(signal: 'SIGINT' | 'SIGTERM', listener: () => void): unknown
+  once(signal: CancelSignal, listener: (signal: CancelSignal) => void): unknown
+  off(signal: CancelSignal, listener: (signal: CancelSignal) => void): unknown
   exit(code: number): unknown
 }
 

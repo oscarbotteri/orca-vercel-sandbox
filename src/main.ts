@@ -1,4 +1,4 @@
-import { COMMANDS, type Command, type ProcessControl } from './commands.ts'
+import { type CancelSignal, COMMANDS, type Command, type ProcessControl } from './commands.ts'
 import { readEnv, resolveCredentials, VARIABLES } from './credentials.ts'
 import { reasonOf } from './errors.ts'
 import { ensureHome, resolveHome } from './home.ts'
@@ -7,7 +7,7 @@ import { createLogger, type Logger, type Sink } from './logger.ts'
 import type { Network, Tunnel } from './proxy.ts'
 import { type SandboxProvider, vercelSandboxes } from './sandbox-session.ts'
 
-export type { Network, ProcessControl, Tunnel }
+export type { CancelSignal, Network, ProcessControl, Tunnel }
 
 export interface RunIo {
   env: NodeJS.ProcessEnv

@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ProcessControl } from '../src/main.ts'
+import type { CancelSignal, ProcessControl } from '../src/main.ts'
 import { CREDENTIAL_ENV, sandboxBody } from './support/fake-network.ts'
 import { type FakeProcess, fakeProcess } from './support/fake-process.ts'
 import {
@@ -354,7 +354,7 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
   })
 
   describe('when cancelled', () => {
-    function holdAt(step: string, proc: () => FakeProcess, signal: NodeJS.Signals) {
+    function holdAt(step: string, proc: () => FakeProcess, signal: CancelSignal) {
       return (command: string) => {
         if (!command.includes(step)) return undefined
         proc().raise(signal)
@@ -362,9 +362,13 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
       }
     }
 
-    it.each(['SIGINT', 'SIGTERM'] as const)(
-      'removes the sandbox, key and SSH block on %s and exits 130',
-      async (signal) => {
+    it.each([
+      ['SIGINT', 130],
+      ['SIGTERM', 143],
+      ['SIGHUP', 129],
+    ] as const)(
+      'removes the sandbox, key and SSH block on %s and exits %i',
+      async (signal, exitCode) => {
         const proc = fakeProcess()
         const userHome = mkdtempSync(join(tmpdir(), 'vercel-orca-create-'))
         void create(
@@ -376,7 +380,7 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
         await proc.exited
         const name = sandboxes.created[0]?.name as string
         const home = join(userHome, '.vercel-orca')
-        expect(proc.exitCodes).toEqual([130])
+        expect(proc.exitCodes).toEqual([exitCode])
         expect(sandboxes.deleted).toEqual([name])
         expect(existsSync(join(home, 'keys', name))).toBe(false)
         expect(existsSync(join(home, 'ssh_config'))).toBe(false)
@@ -391,7 +395,7 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
       const proc = fakeProcess()
       let release: () => void = () => {}
       const userHome = mkdtempSync(join(tmpdir(), 'vercel-orca-create-'))
-      void create(
+      const finished = create(
         {
           beforeCreateResolves: () => {
             // The handler is registered right after provider.create is called.
@@ -411,7 +415,35 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
       await proc.exited
       expect(sandboxes.deleted).toEqual([sandboxes.created[0]?.name])
       expect(proc.exitCodes).toEqual([130])
+      // The run carries on after the (fake) exit and logs its own failure: let it end first.
+      await finished
       rmSync(userHome, { recursive: true, force: true })
+    })
+
+    it('stops waiting for a sandbox that never comes back and still cleans up', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      try {
+        const proc = fakeProcess()
+        const userHome = mkdtempSync(join(tmpdir(), 'vercel-orca-create-'))
+        const pending = create(
+          { beforeCreateResolves: () => new Promise<void>(() => {}) },
+          userHome,
+          undefined,
+          proc,
+        )
+        await vi.waitFor(() => expect(sandboxes.created).toHaveLength(1))
+        proc.raise('SIGINT')
+        await vi.advanceTimersByTimeAsync(10_000)
+        await proc.exited
+        expect(proc.exitCodes).toEqual([130])
+        expect(sandboxes.deleted).toEqual([])
+        const log = readFileSync(join(userHome, '.vercel-orca', 'lifecycle.log'), 'utf8')
+        expect(log).toContain('may still need deleting')
+        void pending
+        rmSync(userHome, { recursive: true, force: true })
+      } finally {
+        vi.useRealTimers()
+      }
     })
 
     it('does not listen for signals once create has finished', async () => {
@@ -421,6 +453,18 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
       expect(proc.exitCodes).toEqual([])
       expect(sandboxes.deleted).toEqual([])
     })
+  })
+
+  it('reports a failed sandbox creation without any cleanup', async () => {
+    const { run } = await create({
+      beforeCreateResolves: async () => {
+        throw new Error('quota exceeded')
+      },
+    })
+    expect(run.code).toBe(1)
+    expect(run.stderr).toContain('quota exceeded')
+    expect(run.readLog()).not.toContain('cleanup')
+    expect(sandboxes.deleted).toEqual([])
   })
 
   describe('known_hosts', () => {

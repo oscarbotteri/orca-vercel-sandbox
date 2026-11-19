@@ -1,14 +1,14 @@
-import type { ProcessControl } from '../../src/main.ts'
+import type { CancelSignal, ProcessControl } from '../../src/main.ts'
 
 export interface FakeProcess extends ProcessControl {
   exitCodes: number[]
   // Resolves on the first exit the code under test asks for.
   exited: Promise<void>
-  raise(signal: NodeJS.Signals): void
+  raise(signal: CancelSignal): void
 }
 
 export function fakeProcess(): FakeProcess {
-  const listeners = new Map<string, () => void>()
+  const listeners = new Map<string, (signal: CancelSignal) => void>()
   let resolveExit: () => void = () => {}
   const fake: FakeProcess = {
     exitCodes: [],
@@ -28,7 +28,7 @@ export function fakeProcess(): FakeProcess {
     raise(signal) {
       const listener = listeners.get(signal)
       listeners.delete(signal)
-      listener?.()
+      listener?.(signal)
     },
   }
   return fake

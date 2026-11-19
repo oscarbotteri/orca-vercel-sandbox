@@ -6,6 +6,9 @@ import type { SandboxSession } from './sandbox-session.ts'
 import { removeSandboxHost } from './ssh-config.ts'
 import { removeKey } from './ssh-keys.ts'
 
+// How long a cancel waits for a sandbox still being created before giving up on deleting it.
+const SESSION_WAIT_MS = 10_000
+
 export interface CleanupTarget {
   name: string
   home: AdapterHome
@@ -23,6 +26,24 @@ export function createCleanup(
   const { name, home, env, logger } = target
   let running: Promise<void> | undefined
 
+  // A create that never answers must not keep a cancel from cleaning up what is local.
+  async function waitForSession(): Promise<SandboxSession | undefined> {
+    let timer: NodeJS.Timeout | undefined
+    const timeout = new Promise<undefined>((resolve) => {
+      timer = setTimeout(() => {
+        logger.error(
+          `create ${name}: the sandbox did not come back in ${SESSION_WAIT_MS}ms and may still need deleting`,
+        )
+        resolve(undefined)
+      }, SESSION_WAIT_MS)
+    })
+    try {
+      return await Promise.race([session(), timeout])
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   async function clean(): Promise<void> {
     const failed: string[] = []
     async function step(what: string, action: () => unknown): Promise<void> {
@@ -34,7 +55,7 @@ export function createCleanup(
       }
     }
     // The sandbox costs money, so it goes first.
-    const sandbox = await session().catch((error: unknown) => {
+    const sandbox = await waitForSession().catch((error: unknown) => {
       logger.error(`create ${name}: no sandbox session to delete: ${reasonOf(error)}`)
       return undefined
     })
