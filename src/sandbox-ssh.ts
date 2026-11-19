@@ -94,7 +94,7 @@ export async function startSshBridge(session: SandboxSession): Promise<void> {
   // The trailing & backgrounds the whole `||` list, so a running bridge is left alone.
   await session.exec(
     `pgrep -x websocat >/dev/null || ` +
-      `nohup ${WEBSOCAT} --binary ws-l:0.0.0.0:${BRIDGE_PORT} tcp:127.0.0.1:22 >${BRIDGE_LOG} 2>&1 &`,
+      `nohup ${WEBSOCAT} --binary --exit-on-eof ws-l:0.0.0.0:${BRIDGE_PORT} tcp:127.0.0.1:22 >${BRIDGE_LOG} 2>&1 &`,
     { background: true },
   )
 }
