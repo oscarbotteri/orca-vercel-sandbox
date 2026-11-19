@@ -39,6 +39,8 @@ export interface CliOptions {
   userHome?: string
   // Stands in for the process: where signals arrive and the exit code is asked for.
   process?: ProcessControl
+  // Where the command is run from; the working directory when absent.
+  cwd?: string
   // Seed the user home before the command runs.
   beforeRun?(userHome: string): void
 }
@@ -76,6 +78,7 @@ export async function runCli(argv: string[], options: CliOptions = {}): Promise<
         stderr += text
       },
     },
+    cwd: options.cwd ?? process.cwd(),
     sandboxes: options.sandboxes,
     process: options.process ?? fakeProcess(),
     network: options.network

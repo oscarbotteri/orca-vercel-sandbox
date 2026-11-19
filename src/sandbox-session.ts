@@ -16,6 +16,7 @@ export interface SandboxSession {
   // Runs a shell command and returns its stdout; a non-zero exit throws.
   exec(command: string, options?: ExecOptions): Promise<string>
   writeFile(path: string, content: string | Uint8Array, mode: number): Promise<void>
+  readFile(path: string): Promise<Buffer>
   // Stops the sandbox; its files survive and a later resume brings it back.
   stop(): Promise<void>
   delete(): Promise<void>
@@ -50,6 +51,11 @@ function wrap(sandbox: Sandbox): SandboxSession {
       return finished.stdout()
     },
     writeFile: (path, content, mode) => sandbox.writeFiles([{ path, content, mode }]),
+    async readFile(path) {
+      const content = await sandbox.readFileToBuffer({ path })
+      if (!content) throw new UserError(`sandbox file not found: ${path}`)
+      return content
+    },
     async stop() {
       await sandbox.stop()
     },

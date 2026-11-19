@@ -15,6 +15,7 @@ export interface RunIo {
   confirm(question: string): Promise<boolean>
   stdout: Sink
   stderr: Sink
+  cwd: string
   network: Network
   tunnel: Tunnel
   process: ProcessControl
@@ -69,6 +70,8 @@ async function runCommand(
       confirm: io.confirm,
       logger,
       stdout: io.stdout,
+      stderr: io.stderr,
+      cwd: io.cwd,
       network: io.network,
       tunnel: io.tunnel,
       process: io.process,
