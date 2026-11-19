@@ -2,6 +2,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { CommandContext } from '../src/commands.ts'
+import { resumeCommand, suspendCommand } from '../src/lifecycle.ts'
 import { CREDENTIAL_ENV, sandboxBody } from './support/fake-network.ts'
 import { type FakeSandboxes, fakeSandboxes } from './support/fake-sandbox.ts'
 import { type FakeVercelApi, startFakeVercelApi } from './support/fake-vercel-api.ts'
@@ -86,6 +88,15 @@ describe.skipIf(!sshdAvailable())('vercel-orca suspend and resume', () => {
     expect(existsSync(join(run.home, 'state', `${name}.asleep`))).toBe(false)
   })
 
+  it('keeps an earlier asleep mark when a repeated suspend fails', async () => {
+    await cli(['suspend'], payload)
+    const failing = fakeSandboxes(sshd, { failStop: true })
+    await failing.create({ name, ports: [] })
+    const run = await runCli(['suspend'], { stdin: payload, userHome, sandboxes: failing })
+    expect(run.code).toBe(1)
+    expect(existsSync(join(run.home, 'state', `${name}.asleep`))).toBe(true)
+  })
+
   it('resumes, restarts sshd and the bridge, and clears the asleep mark', async () => {
     await cli(['suspend'], payload)
     const commandsBefore = sandboxes.commands.length
@@ -121,5 +132,13 @@ describe.skipIf(!sshdAvailable())('vercel-orca suspend and resume', () => {
     )
     expect(run.code).toBe(1)
     expect(run.readLog()).toContain('resume sandbox=orca-nope failed')
+  })
+})
+
+describe('suspend and resume without a payload', () => {
+  it.each([suspendCommand, resumeCommand])('refuse to run, with a clear error', async (command) => {
+    await expect(command.run({ env: {} } as CommandContext)).rejects.toThrow(
+      'needs the lifecycle payload',
+    )
   })
 })

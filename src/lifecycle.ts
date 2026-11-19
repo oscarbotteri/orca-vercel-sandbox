@@ -1,24 +1,26 @@
-import { clearAsleep, markAsleep } from './asleep.ts'
+import { clearAsleep, isAsleep, markAsleep } from './asleep.ts'
 import type { Command, CommandContext } from './commands.ts'
+import { UserError } from './errors.ts'
 import { resolveHome } from './home.ts'
 import { startSshBridge } from './sandbox-ssh.ts'
 import { verifySshWithBridgeLog } from './ssh-verify.ts'
 
 function sandboxName({ payload }: CommandContext): string {
-  // The runner parses the payload for every command that reads one.
-  return (payload as NonNullable<CommandContext['payload']>).sandbox
+  if (!payload) throw new UserError('vercel-orca needs the lifecycle payload on stdin')
+  return payload.sandbox
 }
 
 // Marks first, so a reconnect during the stop cannot wake the sandbox again.
 async function runSuspend(context: CommandContext): Promise<void> {
   const name = sandboxName(context)
   const home = resolveHome(context.env)
+  const wasAsleep = isAsleep(home, name)
   markAsleep(home, name)
   try {
     await (await context.sandboxes().get(name)).stop()
   } catch (error) {
-    // The sandbox is still up (or unknown), so the workspace is not asleep.
-    clearAsleep(home, name)
+    // A failed retry must not wake a workspace an earlier suspend already put to sleep.
+    if (!wasAsleep) clearAsleep(home, name)
     throw error
   }
 }
