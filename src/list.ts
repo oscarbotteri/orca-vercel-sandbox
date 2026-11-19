@@ -2,7 +2,7 @@ import type { Command } from './commands.ts'
 import { resolveHome } from './home.ts'
 import { describeSandboxes, type SandboxRow } from './sandbox-report.ts'
 
-export function formatRows(rows: SandboxRow[]): string {
+function formatRows(rows: SandboxRow[]): string {
   if (rows.length === 0) return 'no sandboxes\n'
   const nameWidth = Math.max('NAME'.length, ...rows.map((row) => row.name.length))
   const stateWidth = Math.max('STATE'.length, ...rows.map((row) => row.state.length))

@@ -68,7 +68,9 @@ async function remoteFindings(
   try {
     const rows = describeSandboxes(home, await context.sandboxes().list())
     for (const { name, state } of orphansOf(rows)) {
-      findings.warnings.push(`orphan sandbox ${name} (${state}): no workspace uses it`)
+      findings.warnings.push(
+        `orphan sandbox ${name} (${state}): no SSH entry on this machine, so no workspace here uses it (it may belong to another machine)`,
+      )
     }
   } catch (error) {
     findings.problems.push(reasonOf(error))
