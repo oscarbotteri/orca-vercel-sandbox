@@ -7,13 +7,17 @@ import { resumeCommand, suspendCommand } from '../src/lifecycle.ts'
 import { CREDENTIAL_ENV, sandboxBody } from './support/fake-network.ts'
 import { type FakeSandboxes, fakeSandboxes } from './support/fake-sandbox.ts'
 import { type FakeVercelApi, startFakeVercelApi } from './support/fake-vercel-api.ts'
+import { cleanupGitDirs, makeRepo, tempDir } from './support/git-repo.ts'
 import { type LocalSshd, sshdAvailable, startLocalSshd } from './support/local-sshd.ts'
 import { cleanupHomes, runCli } from './support/run-cli.ts'
 import { startWsBridge, type WsBridge } from './support/ws-bridge.ts'
 
 const PROXY_PROCESS = join(dirname(fileURLToPath(import.meta.url)), 'support', 'proxy-process.ts')
 
-afterEach(cleanupHomes)
+afterEach(() => {
+  cleanupHomes()
+  cleanupGitDirs()
+})
 
 describe.skipIf(!sshdAvailable())('vercel-orca suspend and resume', () => {
   let sshd: LocalSshd
@@ -31,9 +35,14 @@ describe.skipIf(!sshdAvailable())('vercel-orca suspend and resume', () => {
     chmodSync(join(bin, 'vercel-orca'), 0o755)
   }
 
-  function cli(argv: string[], stdin?: string) {
+  function cli(argv: string[], stdin?: string, extraEnv: Record<string, string> = {}) {
     return runCli(argv, {
-      env: { ...CREDENTIAL_ENV, FAKE_API_URL: api.url, FAKE_BRIDGE_PORT: String(bridge.port) },
+      env: {
+        ...CREDENTIAL_ENV,
+        ...extraEnv,
+        FAKE_API_URL: api.url,
+        FAKE_BRIDGE_PORT: String(bridge.port),
+      },
       sandboxes,
       network: { apiUrl: api.url, bridgePort: bridge.port },
       userHome,
@@ -47,10 +56,17 @@ describe.skipIf(!sshdAvailable())('vercel-orca suspend and resume', () => {
     bridge = await startWsBridge(sshd.port)
     api = await startFakeVercelApi()
     sandboxes = fakeSandboxes(sshd, {
+      home: tempDir('vercel-orca-sandbox-'),
+      localGit: true,
       onCreate: (created) =>
         api.on('GET', `/v2/sandboxes/${created}`, () => ({ body: sandboxBody(created) })),
     })
-    const created = await cli(['create'])
+    const repo = makeRepo()
+    const created = await cli(['create'], undefined, {
+      ORCA_REPO_PATH: repo.path,
+      ORCA_REPO_BRANCH: 'main',
+      ORCA_REPO_REF_HEAD: repo.head,
+    })
     userHome = created.userHome
     name = JSON.parse(created.stdout).userData.resourceId
     payload = JSON.stringify({ recipeResult: { userData: { resourceId: name } } })
