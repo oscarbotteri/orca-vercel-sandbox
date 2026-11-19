@@ -9,6 +9,7 @@ import { BRIDGE_PORT } from './lifecycle-payload.ts'
 import { checkoutBundle } from './sandbox-checkout.ts'
 import type { SandboxSession } from './sandbox-session.ts'
 import { installSshBridge, readIdentity, startSshBridge } from './sandbox-ssh.ts'
+import { writeSandboxState } from './sandbox-state.ts'
 import { addSandboxHost } from './ssh-config.ts'
 import { generateKey } from './ssh-keys.ts'
 import { verifySshWithBridgeLog } from './ssh-verify.ts'
@@ -43,6 +44,11 @@ async function provision(
     proxyCommand,
   })
   await verifySshWithBridgeLog(session, home, context.env)
+  writeSandboxState(home, name, {
+    repoPath: source.repoPath,
+    projectRoot,
+    baseCommit: source.commit,
+  })
   return {
     sshTarget: { host: name, port: 22, username: identity.user, proxyCommand },
     projectRoot,

@@ -16,7 +16,9 @@ describe('lifecycle.log', () => {
     const result = await runCli(['destroy'], { stdin: payloadFor('orca-abc123') })
     const log = result.readLog()
     expect(log).toMatch(/destroy sandbox=orca-abc123 started/)
-    expect(log).toMatch(/destroy sandbox=orca-abc123 failed after \d+ms: .*not implemented yet/)
+    expect(log).toMatch(
+      /destroy sandbox=orca-abc123 failed after \d+ms: no record of where sandbox/,
+    )
   })
 
   it('is created in the adapter home with the layout the other commands rely on', async () => {

@@ -29,7 +29,7 @@ describe('vm-recipe.json', () => {
       const result = await orca.runPhase(phase, stdin)
       expect(result.code).toBe(1)
       expect(result.stdout).toBe('')
-      expect(result.stderr).toContain(`vercel-orca ${phase} is not implemented yet`)
+      expect(result.stderr).toContain('no record of where sandbox orca-e2e1')
       expect(readFileSync(join(orca.adapterHome, 'lifecycle.log'), 'utf8')).toContain(
         `${phase} sandbox=orca-e2e1`,
       )
