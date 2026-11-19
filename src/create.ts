@@ -2,9 +2,11 @@ import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import type { Command, CommandContext } from './commands.ts'
 import { reasonOf, UserError } from './errors.ts'
+import { type CheckoutSource, prepareCheckout } from './git-bundle.ts'
 import { type AdapterHome, resolveHome } from './home.ts'
 import { shellQuote, wrapperPath } from './install.ts'
 import { BRIDGE_PORT } from './lifecycle-payload.ts'
+import { checkoutBundle } from './sandbox-checkout.ts'
 import type { SandboxSession } from './sandbox-session.ts'
 import { installSshBridge, readBridgeLog, readIdentity, startSshBridge } from './sandbox-ssh.ts'
 import { addSandboxHost, removeSandboxHost } from './ssh-config.ts'
@@ -56,12 +58,14 @@ async function provision(
   session: SandboxSession,
   context: CommandContext,
   home: AdapterHome,
+  source: CheckoutSource,
 ): Promise<CreateResult> {
   const { name } = session
   const key = generateKey(home, name)
   const identity = await readIdentity(session)
   await installSshBridge(session, identity, key.publicKey)
   await startSshBridge(session)
+  const projectRoot = await checkoutBundle(session, identity, source)
   const proxyCommand = `${shellQuote(wrapperPath(home))} proxy ${name}`
   addSandboxHost(home.sshConfig, {
     name,
@@ -78,7 +82,7 @@ async function provision(
   }
   return {
     sshTarget: { host: name, port: 22, username: identity.user, proxyCommand },
-    projectRoot: `${identity.home}/work`,
+    projectRoot,
     userData: { resourceId: name },
   }
 }
@@ -88,10 +92,12 @@ async function runCreate(context: CommandContext): Promise<void> {
   const home = resolveHome(context.env)
   const name = `orca-${randomBytes(3).toString('hex')}`
   const provider = sandboxes()
+  // Bundled before the sandbox exists: a repo Git cannot bundle costs nothing.
+  const source = await prepareCheckout(context.env)
   logger.info(`create ${name}: creating the sandbox with port ${BRIDGE_PORT} published`)
   const session = await provider.create({ name, ports: [BRIDGE_PORT] })
   try {
-    const result = await provision(session, context, home)
+    const result = await provision(session, context, home, source)
     stdout.write(`${JSON.stringify(result)}\n`)
   } catch (error) {
     logger.error(`create ${name}: removing the sandbox after: ${reasonOf(error)}`)

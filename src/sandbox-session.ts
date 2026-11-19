@@ -15,7 +15,7 @@ export interface SandboxSession {
   name: string
   // Runs a shell command and returns its stdout; a non-zero exit throws.
   exec(command: string, options?: ExecOptions): Promise<string>
-  writeFile(path: string, content: string, mode: number): Promise<void>
+  writeFile(path: string, content: string | Uint8Array, mode: number): Promise<void>
   delete(): Promise<void>
 }
 
