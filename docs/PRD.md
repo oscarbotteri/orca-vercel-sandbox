@@ -25,7 +25,7 @@ The design follows the [Prized Sandbox plugin](https://github.com/prized-dev/orc
 
 ## Non-goals (for now)
 
-- Keeping memory and running processes across sleep. Vercel stops a sandbox by snapshotting its filesystem, so a tmux session or a running agent does not survive sleep (to confirm, see Open questions).
+- Keeping memory and running processes across sleep. Vercel stops a sandbox by snapshotting its filesystem, so a tmux session or a running agent does not survive sleep.
 - Managing Vercel accounts, teams, projects or billing.
 - Other sandbox providers.
 - Signing agents in automatically. Claude Code or Codex are signed in from the workspace terminal the first time.
@@ -172,12 +172,3 @@ Not planned, only noted:
 - Offline tests run the Orca recipe contract against a fake Vercel API and a local `sshd`, as the Prized plugin does.
 - A live test runs create, sleep, wake, pull and remove against a real sandbox, opt-in with an env var.
 - MIT license, with Apache-2.0 notices for anything taken from the Prized plugin.
-
-## Open questions
-
-1. **Does anything survive a stop besides files?** Expected: files yes, processes no. Also check whether `/tmp` is kept, which decides where the bridge binary lives.
-2. **Is the published URL stable across stop and resume?** If it changes, the proxy must look it up on every connection (the design already does this).
-3. **Does a published port need to be set again after resume**, or is it part of the sandbox's saved configuration?
-4. **How long does the timeout extension need to be** to keep a connected sandbox alive without letting a forgotten one run for a day?
-5. **Default image or custom image?** Installing `sshd` and `websocat` on every create and wake is slower but needs no registry setup.
-6. **How should the plugin pick up Vercel credentials?** A token in the shell profile (as Prized does with its API key), or the `sandbox login` session.
