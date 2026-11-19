@@ -35,6 +35,26 @@ jobs:
       # The live sandbox test skips itself without VERCEL_ORCA_LIVE_TEST, which CI never sets.
       - run: npm run ${{ matrix.task }}
 
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # The bundle must start without the checkout's node_modules.
+      - run: |
+          rm -rf node_modules
+          status=0
+          node dist/vercel-orca.mjs frobnicate 2> stderr.txt || status=$?
+          cat stderr.txt
+          test "$status" -eq 2 && grep -q 'unknown command "frobnicate"' stderr.txt
+
   recipe:
     name: recipe validation
     runs-on: ubuntu-latest

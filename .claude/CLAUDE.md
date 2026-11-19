@@ -39,8 +39,9 @@ An Orca plugin that runs a workspace in its own Vercel Sandbox. Orca runs a VM r
 
 ```
 npm ci            # install
+npm run build     # esbuild bundle in dist/, which setup installs
 npm run verify    # typecheck, lint, format check, tests
-npm test          # vitest
+npm test          # vitest (builds the bundle first)
 npm run format    # Biome, write
 ```
 

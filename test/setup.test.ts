@@ -49,8 +49,8 @@ describe('vercel-orca setup', () => {
     const result = await runCli(['setup'], { env: CREDENTIALS, confirm: true })
     expect(result.code).toBe(0)
     const wrapper = join(result.home, 'bin', 'vercel-orca')
-    expect(readFileSync(wrapper, 'utf8')).toContain(join(result.home, 'lib', 'cli.ts'))
-    expect(existsSync(join(result.home, 'lib', 'main.ts'))).toBe(true)
+    expect(readFileSync(wrapper, 'utf8')).toContain(join(result.home, 'lib', 'vercel-orca.mjs'))
+    expect(existsSync(join(result.home, 'lib', 'node_modules'))).toBe(false)
     const ran = spawnSync(wrapper, ['frobnicate'], { encoding: 'utf8', env: result.env })
     expect(ran.status).toBe(2)
     expect(ran.stderr).toContain('unknown command "frobnicate"')
@@ -164,7 +164,7 @@ describe('vercel-orca uninstall', () => {
     expect(readFileSync(join(result.home, 'ssh_config'), 'utf8')).toContain('orca-a')
   })
 
-  it('reinstalling drops files that are no longer in the sources', async () => {
+  it('reinstalling drops files left by an older install', async () => {
     const result = await runCli(['setup'], { env: CREDENTIALS, confirm: false })
     writeFileSync(join(result.home, 'lib', 'stale.ts'), '')
     await runCli(['setup'], { env: CREDENTIALS, confirm: false, userHome: result.userHome })
