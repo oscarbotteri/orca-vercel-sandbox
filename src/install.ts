@@ -19,6 +19,8 @@ function shellQuote(text: string): string {
 // Copies the adapter's sources next to a small launcher; Node runs the TypeScript directly.
 export function installAdapter(home: AdapterHome, sourceDir: string): void {
   const lib = libDir(home)
+  // Start clean so files dropped from the sources do not linger.
+  rmSync(lib, { recursive: true, force: true })
   mkdirSync(lib, { recursive: true, mode: 0o700 })
   for (const file of readdirSync(sourceDir).filter((name) => name.endsWith('.ts'))) {
     copyFileSync(join(sourceDir, file), join(lib, file))
@@ -28,9 +30,8 @@ export function installAdapter(home: AdapterHome, sourceDir: string): void {
   chmodSync(wrapper, 0o755)
 }
 
-// Keys, state and the log stay: they belong to sandboxes that may still exist.
+// Keys, state, the log and ssh_config stay: they belong to sandboxes that may still exist.
 export function removeAdapterFiles(home: AdapterHome): void {
   rmSync(libDir(home), { recursive: true, force: true })
   rmSync(wrapperPath(home), { force: true })
-  rmSync(home.sshConfig, { force: true })
 }

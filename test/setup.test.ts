@@ -146,6 +146,30 @@ describe('vercel-orca uninstall', () => {
     expect(existsSync(sshConfigOf(installed.userHome))).toBe(false)
   })
 
+  it('keeps an Include line the user added by hand, and ssh_config with its sandbox blocks', async () => {
+    const result = await runCli(['setup'], {
+      env: CREDENTIALS,
+      confirm: false,
+      beforeRun: (userHome) =>
+        seedSshConfig(
+          userHome,
+          `Include ${join(userHome, '.vercel-orca', 'ssh_config')}\n\nHost a\n`,
+        ),
+    })
+    writeFileSync(join(result.home, 'ssh_config'), '# vercel-orca begin orca-a\n')
+    const before = readFileSync(sshConfigOf(result.userHome), 'utf8')
+    await runCli(['uninstall'], { userHome: result.userHome })
+    expect(readFileSync(sshConfigOf(result.userHome), 'utf8')).toBe(before)
+    expect(readFileSync(join(result.home, 'ssh_config'), 'utf8')).toContain('orca-a')
+  })
+
+  it('reinstalling drops files that are no longer in the sources', async () => {
+    const result = await runCli(['setup'], { env: CREDENTIALS, confirm: false })
+    writeFileSync(join(result.home, 'lib', 'stale.ts'), '')
+    await runCli(['setup'], { env: CREDENTIALS, confirm: false, userHome: result.userHome })
+    expect(existsSync(join(result.home, 'lib', 'stale.ts'))).toBe(false)
+  })
+
   it('succeeds when nothing was installed', async () => {
     const result = await runCli(['uninstall'])
     expect(result.code).toBe(0)

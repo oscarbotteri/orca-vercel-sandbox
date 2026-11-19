@@ -59,6 +59,23 @@ describe('per-sandbox SSH blocks', () => {
     expect(readFileSync(path, 'utf8')).toBe('')
   })
 
+  it('quotes an identity file whose path has spaces', () => {
+    addSandboxHost(path, { ...host('orca-a'), identityFile: '/Users/Jane Doe/key' })
+    expect(readFileSync(path, 'utf8')).toContain('  IdentityFile "/Users/Jane Doe/key"')
+  })
+
+  it('refuses values with a line break or an unsafe user', () => {
+    expect(() =>
+      addSandboxHost(path, { ...host('a'), identityFile: '/k\nProxyCommand x' }),
+    ).toThrow('single line')
+    expect(() => addSandboxHost(path, { ...host('a'), proxyCommand: 'x\r\nMatch all' })).toThrow(
+      'single line',
+    )
+    expect(() => addSandboxHost(path, { ...host('a'), user: 'root extra' })).toThrow(
+      'invalid ssh user',
+    )
+  })
+
   it('tolerates removing from a file that does not exist', () => {
     expect(() => removeSandboxHost(path, 'orca-a')).not.toThrow()
   })

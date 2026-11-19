@@ -14,6 +14,10 @@ async function confirm(question: string): Promise<boolean> {
   const rl = createInterface({ input: process.stdin, output: process.stderr })
   try {
     return /^y(es)?$/i.test((await rl.question(`${question} [y/N] `)).trim())
+  } catch (error) {
+    // Ctrl-D or a closed stdin aborts the question: that is a no, not a failure.
+    if (error instanceof Error && error.name === 'AbortError') return false
+    throw error
   } finally {
     rl.close()
   }

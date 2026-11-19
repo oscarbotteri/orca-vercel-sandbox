@@ -67,13 +67,27 @@ function markers(name: string): [string, string] {
   return [`# vercel-orca begin ${name}`, `# vercel-orca end ${name}`]
 }
 
+const SSH_USER = /^[A-Za-z0-9._-]+$/
+
+function assertSingleLine(field: string, value: string): void {
+  if (/[\r\n\0]/.test(value)) throw new UserError(`${field} must be a single line`)
+}
+
+// ssh_config splits on whitespace unless the value is double-quoted.
+function quoteIfNeeded(value: string): string {
+  return /\s/.test(value) ? `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"` : value
+}
+
 function render(host: SandboxHost): string {
+  assertSingleLine('identityFile', host.identityFile)
+  assertSingleLine('proxyCommand', host.proxyCommand)
+  if (!SSH_USER.test(host.user)) throw new UserError(`invalid ssh user "${host.user}"`)
   const [begin, end] = markers(host.name)
   return [
     begin,
     `Host ${host.name}`,
     `  User ${host.user}`,
-    `  IdentityFile ${host.identityFile}`,
+    `  IdentityFile ${quoteIfNeeded(host.identityFile)}`,
     `  ProxyCommand ${host.proxyCommand}`,
     end,
     '',
