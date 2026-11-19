@@ -38,9 +38,12 @@ PRD: <sections of docs/PRD.md> · ADR: [nnnn](docs/adr/nnnn-name.md)
 
 <!-- Only what you actually ran, with its result. Say what was NOT verified. -->
 
+<!-- CI runs format:check, lint, typecheck, test:coverage, recipe validation, the PR title and a
+     secret scan on every PR (docs/ci.md). List here what you ran yourself. -->
+
 - [ ] `npm run typecheck`
 - [ ] `npm run lint`, `npm run format:check`
-- [ ] `npm test` (<n> files, <n> tests)
+- [ ] `npm run test:coverage` (<n> files, <n> tests; coverage stays at or above 80%)
 - [ ] Live test against a real sandbox (opt-in env var) for lifecycle or proxy changes; N/A otherwise
 
 ## Notes for review (optional)

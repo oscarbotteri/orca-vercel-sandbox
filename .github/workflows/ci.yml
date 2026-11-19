@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+# Read-only token for every job; nothing here writes to the repo.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# The job names below are the status checks a `main` ruleset can require.
+# Renaming one breaks that rule, so keep them stable.
+jobs:
+  check:
+    name: ${{ matrix.task }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [format:check, lint, typecheck, test:coverage]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # The live sandbox test skips itself without VERCEL_ORCA_LIVE_TEST, which CI never sets.
+      - run: npm run ${{ matrix.task }}
+
+  recipe:
+    name: recipe validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Orca source commit whose recipe validator runs below. To bump it, pick a commit of
+      # https://github.com/stablyai/orca and check that vm-recipe.json still passes.
+      ORCA_REF: 85c8b927f917d7a6b09e2f17cf1b5a203a2b53e7
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+      - name: Fetch the Orca source
+        run: |
+          git init orca
+          git -C orca remote add origin https://github.com/stablyai/orca.git
+          git -C orca sparse-checkout set src/shared
+          git -C orca fetch --depth 1 origin "$ORCA_REF"
+          git -C orca checkout FETCH_HEAD
+      - name: Install the validator's dependencies
+        working-directory: orca
+        run: |
+          # Orca's own package.json uses workspace: dependencies that a plain npm cannot install.
+          rm package.json
+          npm init -y > /dev/null
+          npm install --no-package-lock --ignore-scripts zod@4.6.7 yaml@2.9.1 tsx@4.23.15
+      - name: Validate vm-recipe.json
+        working-directory: orca
+        run: |
+          cp ../.github/scripts/validate-recipe.ts validate-recipe.ts
+          npx tsx validate-recipe.ts ../vm-recipe.json
+
+  pr-title:
+    name: PR title
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # Same rules as .claude/skills/commit-pr/SKILL.md; the title becomes the squash commit.
+      - name: Check the PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          HEADER="${TITLE%% (#*}"
+          PATTERN='^(feat|fix|docs|test|refactor|perf|chore)(\((cli|setup|lifecycle|proxy|git|recipe|infra|claude|repo|prd|adr)\))?!?: [a-z0-9`].*[^.]$'
+          if ! printf '%s' "$HEADER" | grep -Eq "$PATTERN"; then
+            echo "::error::PR title must be '<type>(<scope>): <imperative summary> (#<issue>)'. See .claude/skills/commit-pr/SKILL.md."
+            exit 1
+          fi
+          if [ ${#HEADER} -gt 72 ]; then
+            echo "::error::PR title header is ${#HEADER} characters; the limit is 72."
+            exit 1
+          fi
+
+  secret-scan:
+    name: secret scan
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
