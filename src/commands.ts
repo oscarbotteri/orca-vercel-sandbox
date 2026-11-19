@@ -2,7 +2,6 @@ import { createCommand } from './create.ts'
 import type { VercelCredentials } from './credentials.ts'
 import { destroyCommand } from './destroy.ts'
 import { doctorCommand } from './doctor.ts'
-import { UserError } from './errors.ts'
 import { resumeCommand, suspendCommand } from './lifecycle.ts'
 import type { LifecyclePayload } from './lifecycle-payload.ts'
 import { listCommand } from './list.ts'
@@ -50,16 +49,6 @@ export interface CommandContext {
 export interface Command {
   readsPayload: boolean
   run(context: CommandContext): Promise<void>
-}
-
-function notImplemented(name: string): Command['run'] {
-  return async () => {
-    throw new UserError(`vercel-orca ${name} is not implemented yet`)
-  }
-}
-
-function command(name: string, readsPayload = false): [string, Command] {
-  return [name, { readsPayload, run: notImplemented(name) }]
 }
 
 export const COMMANDS: ReadonlyMap<string, Command> = new Map([

@@ -38,7 +38,7 @@ describe('vercel-orca pull', () => {
       { user: 'ubuntu', authorizeKey: () => {} },
       { home: sandboxHome, localGit: true },
     )
-    await sandboxes.create({ name: NAME, ports: [] })
+    await sandboxes.create({ name: NAME, ports: [], settings: {} })
     userHome = mkdtempSync(join(tempDir('vercel-orca-user-'), 'home-'))
   })
 
