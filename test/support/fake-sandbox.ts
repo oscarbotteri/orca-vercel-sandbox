@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { promisify } from 'node:util'
 import type { ExecOptions, SandboxProvider, SandboxSession } from '../../src/sandbox-session.ts'
 import type { LocalSshd } from './local-sshd.ts'
@@ -12,6 +12,7 @@ export interface FakeSandboxes extends SandboxProvider {
   stopped: string[]
   // Like the `failOn` option, but can be set after the sandbox exists.
   failOn?: string
+  read: string[]
   // Each `get`, with whether it asked to resume.
   looked: { name: string; resume: boolean }[]
 }
@@ -45,7 +46,10 @@ const run = promisify(execFile)
 
 // A sandbox that runs nothing: it answers the identity questions, records every command and file,
 // and trusts the public key create writes on the local sshd, which stands in for the sandbox's.
-export function fakeSandboxes(sshd: LocalSshd, options: FakeSandboxOptions = {}): FakeSandboxes {
+export function fakeSandboxes(
+  sshd: Pick<LocalSshd, 'user' | 'authorizeKey'>,
+  options: FakeSandboxOptions = {},
+): FakeSandboxes {
   const sessions = new Map<string, SandboxSession>()
   const fake: FakeSandboxes = {
     created: [],
@@ -53,6 +57,7 @@ export function fakeSandboxes(sshd: LocalSshd, options: FakeSandboxOptions = {})
     files: [],
     deleted: [],
     stopped: [],
+    read: [],
     looked: [],
     async get(name, { resume = false } = {}) {
       fake.looked.push({ name, resume })
@@ -87,6 +92,10 @@ export function fakeSandboxes(sshd: LocalSshd, options: FakeSandboxOptions = {})
           fake.files.push({ path, content: text, mode })
           if (options.localGit && path.endsWith('.bundle')) writeFileSync(path, content)
           if (path.endsWith('authorized_keys') && !options.withholdKey) sshd.authorizeKey(text)
+        },
+        async readFile(path) {
+          fake.read.push(path)
+          return readFileSync(path)
         },
         async stop() {
           if (options.failStop) throw new Error('stop failed')

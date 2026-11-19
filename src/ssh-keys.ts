@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { chmodSync, readFileSync, rmSync } from 'node:fs'
+import { chmodSync, existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { UserError } from './errors.ts'
 import type { AdapterHome } from './home.ts'
@@ -31,4 +31,12 @@ export function generateKey(home: AdapterHome, name: string): SandboxKey {
 export function removeKey(home: AdapterHome, name: string): void {
   rmSync(keyPath(home, name), { force: true })
   rmSync(`${keyPath(home, name)}.pub`, { force: true })
+}
+
+// Every sandbox `create` made on this machine and `destroy` has not removed yet.
+export function sandboxNames(home: AdapterHome): string[] {
+  if (!existsSync(home.keys)) return []
+  return readdirSync(home.keys)
+    .filter((file) => !file.endsWith('.pub'))
+    .sort()
 }

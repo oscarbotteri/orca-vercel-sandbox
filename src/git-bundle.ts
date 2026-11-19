@@ -59,9 +59,11 @@ export function httpsOrigin(remote: string): string | undefined {
 
 // Git decides what a branch name is; a leading dash is refused here since the name reaches a
 // command line (quoted, but still read as an option).
-async function branchOf(repoPath: string, env: NodeJS.ProcessEnv): Promise<string | undefined> {
-  const branch = (env.ORCA_REPO_BRANCH ?? '').trim().replace(/^refs\/heads\//, '')
-  if (!branch) return undefined
+export async function assertBranchName(
+  repoPath: string,
+  branch: string,
+  env: NodeJS.ProcessEnv,
+): Promise<void> {
   const valid =
     !branch.startsWith('-') &&
     (await git(repoPath, ['check-ref-format', '--branch', branch], env).then(
@@ -69,6 +71,12 @@ async function branchOf(repoPath: string, env: NodeJS.ProcessEnv): Promise<strin
       () => false,
     ))
   if (!valid) throw new UserError(`unsupported branch name: ${branch}`)
+}
+
+async function branchOf(repoPath: string, env: NodeJS.ProcessEnv): Promise<string | undefined> {
+  const branch = (env.ORCA_REPO_BRANCH ?? '').trim().replace(/^refs\/heads\//, '')
+  if (!branch) return undefined
+  await assertBranchName(repoPath, branch, env)
   return branch
 }
 

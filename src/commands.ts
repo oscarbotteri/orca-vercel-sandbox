@@ -6,6 +6,7 @@ import { resumeCommand, suspendCommand } from './lifecycle.ts'
 import type { LifecyclePayload } from './lifecycle-payload.ts'
 import type { Logger, Sink } from './logger.ts'
 import { type Network, proxyCommand, type Tunnel } from './proxy.ts'
+import { pullCommand } from './pull.ts'
 import type { SandboxProvider } from './sandbox-session.ts'
 import { setupCommand, uninstallCommand } from './setup.ts'
 
@@ -24,6 +25,10 @@ export interface CommandContext {
   // Asks the person a yes/no question; false when there is nobody to ask.
   confirm(question: string): Promise<boolean>
   logger: Logger
+  // The directory the person ran the command from; `pull` copies into the repository it is in.
+  cwd: string
+  // Reports what a command did to the person; stdout stays reserved for `create`.
+  stderr: Sink
   // Only `create` writes here: its JSON result is the one thing Orca reads from stdout.
   stdout: Sink
   // The Vercel API and the published URLs: injected so tests can point them at local servers.
@@ -64,6 +69,6 @@ export const COMMANDS: ReadonlyMap<string, Command> = new Map([
   ['setup', setupCommand],
   ['uninstall', uninstallCommand],
   command('doctor'),
-  command('pull'),
+  ['pull', pullCommand],
   command('list'),
 ])
