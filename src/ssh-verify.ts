@@ -8,7 +8,13 @@ import { readBridgeLog } from './sandbox-ssh.ts'
 const VERIFY_ATTEMPTS = 6
 const VERIFY_DELAY_MS = 500
 
-function sshAttempt(home: AdapterHome, name: string, env: NodeJS.ProcessEnv): Promise<boolean> {
+interface Attempt {
+  ok: boolean
+  // What ssh and its ProxyCommand wrote to stderr, which says why a connection failed.
+  stderr: string
+}
+
+function sshAttempt(home: AdapterHome, name: string, env: NodeJS.ProcessEnv): Promise<Attempt> {
   return new Promise((resolve) => {
     // accept-new records the sandbox's host key on first contact and refuses a changed one.
     const child = spawn(
@@ -27,20 +33,30 @@ function sshAttempt(home: AdapterHome, name: string, env: NodeJS.ProcessEnv): Pr
         name,
         'true',
       ],
-      { env, stdio: 'ignore' },
+      { env, stdio: ['ignore', 'ignore', 'pipe'] },
     )
-    child.on('error', () => resolve(false))
-    child.on('close', (code) => resolve(code === 0))
+    let stderr = ''
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk
+    })
+    child.on('error', (error) => resolve({ ok: false, stderr: error.message }))
+    child.on('close', (code) => resolve({ ok: code === 0, stderr: stderr.trim() }))
   })
 }
 
 // sshd and the bridge may need a moment after they start, so the first tries can fail.
 async function verifySsh(home: AdapterHome, name: string, env: NodeJS.ProcessEnv): Promise<void> {
+  let last = ''
   for (let attempt = 1; attempt <= VERIFY_ATTEMPTS; attempt++) {
-    if (await sshAttempt(home, name, env)) return
+    const result = await sshAttempt(home, name, env)
+    if (result.ok) return
+    last = result.stderr
     if (attempt < VERIFY_ATTEMPTS) await new Promise((r) => setTimeout(r, VERIFY_DELAY_MS))
   }
-  throw new UserError(`the SSH connection to sandbox ${name} could not be verified`)
+  throw new UserError(
+    `the SSH connection to sandbox ${name} could not be verified` +
+      (last ? `; ssh said:\n${last}` : ''),
+  )
 }
 
 // A failed check carries what the bridge said, which usually explains why it never came up.
