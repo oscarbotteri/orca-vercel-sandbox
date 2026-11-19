@@ -2,6 +2,7 @@ import { Sandbox } from '@vercel/sandbox'
 import type { VercelCredentials } from './credentials.ts'
 import { reasonOf, UserError } from './errors.ts'
 import type { Network } from './proxy.ts'
+import { type SandboxSettings, toCreateParams } from './settings.ts'
 
 export interface ExecOptions {
   // Run as root.
@@ -24,6 +25,7 @@ export interface SandboxSession {
 export interface SandboxRequest {
   name: string
   ports: number[]
+  settings: SandboxSettings
 }
 
 export interface SandboxProvider {
@@ -59,14 +61,24 @@ function wrap(sandbox: Sandbox): SandboxSession {
   }
 }
 
+// Only the latest snapshot is kept: Vercel evicts and deletes older ones as each new one is taken.
+export function sandboxCreateParams({ name, ports, settings }: SandboxRequest) {
+  return {
+    name,
+    ports,
+    persistent: true,
+    keepLastSnapshots: { count: 1 },
+    ...toCreateParams(settings),
+  }
+}
+
 export function vercelSandboxes(credentials: VercelCredentials, network: Network): SandboxProvider {
   return {
-    async create({ name, ports }) {
+    async create(request) {
+      const { name } = request
       try {
         const sandbox = await Sandbox.create({
-          name,
-          ports,
-          persistent: true,
+          ...sandboxCreateParams(request),
           ...credentials,
           fetch: network.fetch,
         })

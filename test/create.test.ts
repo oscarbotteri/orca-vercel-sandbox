@@ -114,6 +114,22 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
     })
   })
 
+  it('creates the sandbox with the settings saved in config.json', async () => {
+    const userHome = tempDir('vercel-orca-user-')
+    mkdirSync(join(userHome, '.vercel-orca'), { recursive: true })
+    writeFileSync(
+      join(userHome, '.vercel-orca', 'config.json'),
+      JSON.stringify({ image: 'my-repo:v1', vcpus: 2, region: 'fra1' }),
+    )
+    const { run } = await create({}, userHome)
+    expect(run.code).toBe(0)
+    expect(sandboxes.created[0]?.settings).toEqual({
+      image: 'my-repo:v1',
+      vcpus: 2,
+      region: 'fra1',
+    })
+  })
+
   describe('git checkout', () => {
     function inSandbox(dir = 'project'): string {
       return join(sandboxHome, 'work', dir)

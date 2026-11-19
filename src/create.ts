@@ -10,6 +10,7 @@ import { checkoutBundle } from './sandbox-checkout.ts'
 import type { SandboxSession } from './sandbox-session.ts'
 import { installSshBridge, readIdentity, startSshBridge } from './sandbox-ssh.ts'
 import { writeSandboxState } from './sandbox-state.ts'
+import { readSettings } from './settings.ts'
 import { addSandboxHost } from './ssh-config.ts'
 import { generateKey } from './ssh-keys.ts'
 import { verifySshWithBridgeLog } from './ssh-verify.ts'
@@ -61,11 +62,13 @@ async function runCreate(context: CommandContext): Promise<void> {
   const home = resolveHome(context.env)
   const name = `orca-${randomBytes(3).toString('hex')}`
   const provider = sandboxes()
+  // Read first, so a bad config.json costs nothing.
+  const settings = readSettings(home)
   // Bundled before the sandbox exists: a repo Git cannot bundle costs nothing.
   const source = await prepareCheckout(context.env)
   logger.info(`create ${name}: creating the sandbox with port ${BRIDGE_PORT} published`)
   // A signal can arrive before provider.create resolves; cleanup then waits for the session.
-  const creating = provider.create({ name, ports: [BRIDGE_PORT] })
+  const creating = provider.create({ name, ports: [BRIDGE_PORT], settings })
   const cleanup = createCleanup({ name, home, env: context.env, logger }, () => creating)
   // `once` on purpose: a second signal gets the default action, so a hung cleanup can be escaped.
   function cancel(signal: CancelSignal): void {

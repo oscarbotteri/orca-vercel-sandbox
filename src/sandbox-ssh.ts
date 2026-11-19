@@ -58,6 +58,12 @@ export async function installSshBridge(
   identity: SandboxIdentity,
   publicKey: string,
 ): Promise<void> {
+  // A custom image may not be Debian or Ubuntu; say so now rather than as an apt-get error.
+  await session.exec('command -v apt-get >/dev/null').catch(() => {
+    throw new UserError(
+      'the sandbox image has no apt-get: only Debian and Ubuntu based images are supported',
+    )
+  })
   await session.exec(
     'apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq openssh-server',
     { sudo: true },

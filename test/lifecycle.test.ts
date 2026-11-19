@@ -97,7 +97,7 @@ describe.skipIf(!sshdAvailable())('vercel-orca suspend and resume', () => {
 
   it('keeps the workspace awake when the stop fails', async () => {
     const failing = fakeSandboxes(sshd, { failStop: true })
-    await failing.create({ name, ports: [] })
+    await failing.create({ name, ports: [], settings: {} })
     const run = await runCli(['suspend'], { stdin: payload, userHome, sandboxes: failing })
     expect(run.code).toBe(1)
     expect(run.stderr).toContain('stop failed')
@@ -107,7 +107,7 @@ describe.skipIf(!sshdAvailable())('vercel-orca suspend and resume', () => {
   it('keeps an earlier asleep mark when a repeated suspend fails', async () => {
     await cli(['suspend'], payload)
     const failing = fakeSandboxes(sshd, { failStop: true })
-    await failing.create({ name, ports: [] })
+    await failing.create({ name, ports: [], settings: {} })
     const run = await runCli(['suspend'], { stdin: payload, userHome, sandboxes: failing })
     expect(run.code).toBe(1)
     expect(existsSync(join(run.home, 'state', `${name}.asleep`))).toBe(true)
