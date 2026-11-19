@@ -26,13 +26,21 @@ function provider(listed: SandboxSummary[] | Error): SandboxProvider & { calls: 
   }
 }
 
-// A sandbox as `create` leaves it: SSH block, key and workspace record.
+// A sandbox as `create` leaves it: SSH block, key and state.
 function seedWorkspace(userHome: string, name: string, label: string, keyMode = 0o600): void {
   const home = join(userHome, '.vercel-orca')
   for (const dir of ['keys', 'state']) mkdirSync(join(home, dir), { recursive: true })
   writeFileSync(join(home, 'keys', name), 'key', { mode: keyMode })
   chmodSync(join(home, 'keys', name), keyMode)
-  writeFileSync(join(home, 'state', `${name}.workspace`), `${label}\n`)
+  writeFileSync(
+    join(home, 'state', `${name}.json`),
+    JSON.stringify({
+      repoPath: '/repo',
+      projectRoot: '/root',
+      baseCommit: 'abc',
+      workspace: label,
+    }),
+  )
   addSandboxHost(join(home, 'ssh_config'), {
     name,
     user: 'ubuntu',

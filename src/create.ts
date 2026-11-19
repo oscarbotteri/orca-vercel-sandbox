@@ -9,12 +9,11 @@ import { BRIDGE_PORT } from './lifecycle-payload.ts'
 import { checkoutBundle } from './sandbox-checkout.ts'
 import { SANDBOX_PREFIX, type SandboxSession } from './sandbox-session.ts'
 import { installSshBridge, readIdentity, startSshBridge } from './sandbox-ssh.ts'
-import { writeSandboxState } from './sandbox-state.ts'
+import { workspaceLabel, writeSandboxState } from './sandbox-state.ts'
 import { readSettings } from './settings.ts'
 import { addSandboxHost } from './ssh-config.ts'
 import { generateKey } from './ssh-keys.ts'
 import { verifySshWithBridgeLog } from './ssh-verify.ts'
-import { recordWorkspace, workspaceLabel } from './workspaces.ts'
 
 // 128 plus the signal number, as a shell reports a process killed by it.
 const CANCEL_EXIT_CODES: Record<CancelSignal, number> = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 }
@@ -39,7 +38,6 @@ async function provision(
   await startSshBridge(session)
   const projectRoot = await checkoutBundle(session, identity, source)
   const proxyCommand = `${shellQuote(wrapperPath(home))} proxy ${name}`
-  recordWorkspace(home, name, workspaceLabel(source))
   addSandboxHost(home.sshConfig, {
     name,
     user: identity.user,
@@ -51,6 +49,7 @@ async function provision(
     repoPath: source.repoPath,
     projectRoot,
     baseCommit: source.commit,
+    workspace: workspaceLabel(source),
   })
   return {
     sshTarget: { host: name, port: 22, username: identity.user, proxyCommand },

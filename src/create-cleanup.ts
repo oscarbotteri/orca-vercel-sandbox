@@ -5,7 +5,6 @@ import type { Logger } from './logger.ts'
 import type { SandboxSession } from './sandbox-session.ts'
 import { removeSandboxHost } from './ssh-config.ts'
 import { removeKey } from './ssh-keys.ts'
-import { forgetWorkspace } from './workspaces.ts'
 
 // How long a cancel waits for a sandbox still being created before giving up on deleting it.
 const SESSION_WAIT_MS = 10_000
@@ -64,7 +63,6 @@ export function createCleanup(
     // The private key next: it is the only sensitive file.
     await step('the private key', () => removeKey(home, name))
     await step('the SSH block', () => removeSandboxHost(home.sshConfig, name))
-    await step('the workspace record', () => forgetWorkspace(home, name))
     await step('the known_hosts entry', () => removeKnownHost(env, name))
     if (failed.length === 0) logger.info(`create ${name}: cleanup done`)
     else logger.error(`create ${name}: cleanup incomplete, still to remove: ${failed.join(', ')}`)

@@ -1,8 +1,8 @@
 import { isAsleep } from './asleep.ts'
 import type { AdapterHome } from './home.ts'
 import type { SandboxSummary } from './sandbox-session.ts'
+import { workspaceOf } from './sandbox-state.ts'
 import { listSandboxHosts } from './ssh-config.ts'
-import { workspaceOf } from './workspaces.ts'
 
 export interface SandboxRow {
   name: string
