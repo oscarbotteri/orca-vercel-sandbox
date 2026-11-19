@@ -7,6 +7,7 @@ import { createLogger, type Logger, type Sink } from './logger.ts'
 export interface RunIo {
   env: NodeJS.ProcessEnv
   readStdin(): Promise<string>
+  confirm(question: string): Promise<boolean>
   stdout: Sink
   stderr: Sink
 }
@@ -54,6 +55,8 @@ async function runCommand(
     logger.info(`${name}${subject} started`)
     await command.run({
       args,
+      env: io.env,
+      confirm: io.confirm,
       logger,
       stdout: io.stdout,
       credentials: () => resolveCredentials(io.env),
