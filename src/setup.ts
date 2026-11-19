@@ -5,6 +5,7 @@ import type { Command } from './commands.ts'
 import { type AdapterHome, resolveHome } from './home.ts'
 import { installAdapter, removeAdapterFiles } from './install.ts'
 import { assertPrerequisites } from './prerequisites.ts'
+import { saveSettings, settingsFromFlags } from './settings.ts'
 import {
   addIncludeToUserConfig,
   includeLine,
@@ -22,9 +23,15 @@ function includeMarker(home: AdapterHome): string {
 
 export const setupCommand: Command = {
   readsPayload: false,
-  async run({ env, logger, confirm }) {
+  async run({ args, env, logger, confirm }) {
+    // Flags are checked first: a typo should not leave a half-installed adapter.
+    const flags = settingsFromFlags(args)
     assertPrerequisites(env)
     const home = resolveHome(env)
+    if (args.length > 0) {
+      saveSettings(home, flags)
+      logger.info(`saved sandbox settings in ${home.config}`)
+    }
     installAdapter(home, SOURCE_DIR)
     logger.info(`adapter installed in ${home.root}`)
 

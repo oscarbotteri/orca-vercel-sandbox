@@ -1,11 +1,16 @@
 import { execFile } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { promisify } from 'node:util'
-import type { ExecOptions, SandboxProvider, SandboxSession } from '../../src/sandbox-session.ts'
+import type {
+  ExecOptions,
+  SandboxProvider,
+  SandboxRequest,
+  SandboxSession,
+} from '../../src/sandbox-session.ts'
 import type { LocalSshd } from './local-sshd.ts'
 
 export interface FakeSandboxes extends SandboxProvider {
-  created: { name: string; ports: number[] }[]
+  created: SandboxRequest[]
   commands: string[]
   files: { path: string; content: string; mode: number }[]
   deleted: string[]
