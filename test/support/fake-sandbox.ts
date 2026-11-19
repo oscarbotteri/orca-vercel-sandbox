@@ -10,6 +10,8 @@ export interface FakeSandboxes extends SandboxProvider {
   files: { path: string; content: string; mode: number }[]
   deleted: string[]
   stopped: string[]
+  // Like the `failOn` option, but can be set after the sandbox exists.
+  failOn?: string
   // Each `get`, with whether it asked to resume.
   looked: { name: string; resume: boolean }[]
 }
@@ -23,7 +25,7 @@ export interface FakeSandboxOptions {
   user?: string
   home?: string
   bridgeLog?: string
-  // Runs the checkout's git and rm commands for real and keeps the uploaded bundle on disk, so
+  // Runs the checkout's git and rm commands (and git with a temporary index) for real and keeps the uploaded bundle on disk, so
   // `home` must be a writable directory. Everything else stays recorded only.
   localGit?: boolean
   // Makes stopping fail, as an API error would.
@@ -67,10 +69,11 @@ export function fakeSandboxes(sshd: LocalSshd, options: FakeSandboxOptions = {})
         async exec(command: string, _options?: ExecOptions) {
           fake.commands.push(command)
           await options.onCommand?.(command)
-          if (options.failOn && command.includes(options.failOn)) {
+          const failOn = fake.failOn ?? options.failOn
+          if (failOn && command.includes(failOn)) {
             throw new Error(`command failed: ${command}`)
           }
-          if (options.localGit && /^(git|rm) /.test(command)) {
+          if (options.localGit && /^(git|rm|GIT_INDEX_FILE=|base64 )/.test(command)) {
             return (await run('sh', ['-c', command])).stdout
           }
           if (command === 'id -un') return options.user ?? sshd.user

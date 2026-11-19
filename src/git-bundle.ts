@@ -14,6 +14,7 @@ const COMMIT = /^[0-9a-f]{40}([0-9a-f]{24})?$/
 // What Orca picked for the workspace, and what the sandbox checkout needs from the local repo.
 export interface CheckoutSource {
   repoName: string
+  repoPath: string
   // Absent for a detached commit.
   branch?: string
   commit: string
@@ -26,7 +27,11 @@ export interface CheckoutSource {
   gitEmail: string
 }
 
-async function git(repoPath: string, args: string[], env: NodeJS.ProcessEnv): Promise<string> {
+export async function git(
+  repoPath: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+): Promise<string> {
   try {
     return (await run('git', ['-C', repoPath, ...args], { env })).stdout.trim()
   } catch (error) {
@@ -129,6 +134,7 @@ export async function prepareCheckout(env: NodeJS.ProcessEnv): Promise<CheckoutS
   const remote = (env.ORCA_REPO_URL ?? '').trim()
   return {
     repoName,
+    repoPath,
     branch,
     commit,
     bundle,

@@ -54,7 +54,7 @@ function wrap(sandbox: Sandbox): SandboxSession {
       await sandbox.stop()
     },
     async delete() {
-      await sandbox.delete()
+      await sandbox.delete({ deleteOrphanSnapshots: true })
     },
   }
 }

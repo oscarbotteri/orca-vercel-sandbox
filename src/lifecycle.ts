@@ -5,7 +5,7 @@ import { resolveHome } from './home.ts'
 import { startSshBridge } from './sandbox-ssh.ts'
 import { verifySshWithBridgeLog } from './ssh-verify.ts'
 
-function sandboxName({ payload }: CommandContext): string {
+export function sandboxName({ payload }: CommandContext): string {
   if (!payload) throw new UserError('vercel-orca needs the lifecycle payload on stdin')
   return payload.sandbox
 }

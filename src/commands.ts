@@ -1,5 +1,6 @@
 import { createCommand } from './create.ts'
 import type { VercelCredentials } from './credentials.ts'
+import { destroyCommand } from './destroy.ts'
 import { UserError } from './errors.ts'
 import { resumeCommand, suspendCommand } from './lifecycle.ts'
 import type { LifecyclePayload } from './lifecycle-payload.ts'
@@ -58,7 +59,7 @@ export const COMMANDS: ReadonlyMap<string, Command> = new Map([
   ['create', createCommand],
   ['suspend', suspendCommand],
   ['resume', resumeCommand],
-  command('destroy', true),
+  ['destroy', destroyCommand],
   ['proxy', proxyCommand],
   ['setup', setupCommand],
   ['uninstall', uninstallCommand],
