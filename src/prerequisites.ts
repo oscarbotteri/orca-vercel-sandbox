@@ -1,9 +1,8 @@
 import { spawnSync } from 'node:child_process'
+import { resolveCredentials } from './credentials.ts'
 import { UserError } from './errors.ts'
 
 const MIN_NODE_MAJOR = 24
-
-const CREDENTIALS = ['VERCEL_TOKEN', 'VERCEL_TEAM_ID', 'VERCEL_PROJECT_ID'] as const
 
 function runs(command: string, args: string[], env: NodeJS.ProcessEnv): boolean {
   return spawnSync(command, args, { env, stdio: 'ignore' }).status === 0
@@ -17,8 +16,11 @@ export function findMissingPrerequisites(env: NodeJS.ProcessEnv): string[] {
   }
   if (!runs('git', ['--version'], env)) missing.push('Git (`git` not found on PATH)')
   if (!runs('ssh', ['-V'], env)) missing.push('OpenSSH (`ssh` not found on PATH)')
-  for (const name of CREDENTIALS) {
-    if (!env[name]) missing.push(`${name} (environment variable not set)`)
+  try {
+    resolveCredentials(env)
+  } catch (error) {
+    if (!(error instanceof UserError)) throw error
+    missing.push(error.message)
   }
   return missing
 }
