@@ -7,6 +7,7 @@ const DIR = '/tmp/vercel-orca'
 const SSHD_CONFIG = `${DIR}/sshd_config`
 const WEBSOCAT = `${DIR}/websocat`
 const BRIDGE_LOG = `${DIR}/websocat.log`
+const SSHD_LOG = `${DIR}/sshd.log`
 // Pinned: the project publishes no checksums, so this is the hash of the v1.14.0 asset as downloaded.
 const WEBSOCAT_SHA256 = '33a80fcbf2313e3c6e816ddafec333c1a04cc34464d4ba4970d938275775a12f'
 const WEBSOCAT_URL =
@@ -34,12 +35,17 @@ export async function readIdentity(session: SandboxSession): Promise<SandboxIden
 
 // What websocat said, to explain a bridge that never came up. It holds no secrets.
 export async function readBridgeLog(session: SandboxSession): Promise<string> {
-  return (await session.exec(`tail -n 20 ${BRIDGE_LOG}`)).trim()
+  const [bridge, sshd] = await Promise.all(
+    [BRIDGE_LOG, SSHD_LOG].map((log) => session.exec(`tail -n 20 ${log} 2>/dev/null || true`)),
+  )
+  return [bridge, sshd ? `sshd:\n${sshd.trim()}` : ''].join('\n').trim()
 }
 
 function sshdConfig(identity: SandboxIdentity): string {
   return [
     'Port 22',
+    // Says why sshd refuses a key (bad ownership or modes, a locked account) in sshd.log.
+    'LogLevel VERBOSE',
     // The published URL is public: sshd must only be reachable through the bridge.
     'ListenAddress 127.0.0.1',
     'PasswordAuthentication no',
@@ -71,6 +77,9 @@ export async function installSshBridge(
     { sudo: true },
   )
   await session.exec('ssh-keygen -A', { sudo: true })
+  // The sandbox user's account is locked (password "!"), and sshd refuses a locked account even
+  // for a key. "*" is no password at all, which sshd accepts and which still cannot log in by one.
+  await session.exec(`usermod -p '*' ${identity.user}`, { sudo: true })
   await session.exec(
     `mkdir -p ${DIR} ${identity.home}/work ${identity.home}/.ssh && chmod 700 ${identity.home}/.ssh`,
   )
@@ -88,13 +97,13 @@ export async function installSshBridge(
 // process starts only if it is not already running, so a second wake finds nothing to do.
 export async function startSshBridge(session: SandboxSession): Promise<void> {
   await session.exec(
-    `pgrep -x sshd >/dev/null || { mkdir -p /run/sshd && /usr/sbin/sshd -f ${SSHD_CONFIG}; }`,
+    `pgrep -x sshd >/dev/null || { mkdir -p /run/sshd && /usr/sbin/sshd -f ${SSHD_CONFIG} -E ${SSHD_LOG}; }`,
     { sudo: true },
   )
   // The trailing & backgrounds the whole `||` list, so a running bridge is left alone.
   await session.exec(
     `pgrep -x websocat >/dev/null || ` +
-      `nohup ${WEBSOCAT} --binary ws-l:0.0.0.0:${BRIDGE_PORT} tcp:127.0.0.1:22 >${BRIDGE_LOG} 2>&1 &`,
+      `nohup ${WEBSOCAT} --binary --exit-on-eof ws-l:0.0.0.0:${BRIDGE_PORT} tcp:127.0.0.1:22 >${BRIDGE_LOG} 2>&1 &`,
     { background: true },
   )
 }

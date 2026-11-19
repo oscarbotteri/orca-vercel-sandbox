@@ -104,6 +104,8 @@ export function vercelSandboxes(credentials: VercelCredentials, network: Network
       try {
         const page = await Sandbox.list({
           namePrefix: SANDBOX_PREFIX,
+          // Vercel rejects namePrefix with any other sort order.
+          sortBy: 'name',
           ...credentials,
           fetch: network.fetch,
         })
