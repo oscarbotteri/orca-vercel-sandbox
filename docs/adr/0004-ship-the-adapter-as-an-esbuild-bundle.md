@@ -20,4 +20,4 @@ Alternatives considered:
 
 ## Consequences
 
-`dist/` is not committed. Whatever publishes the plugin (#17) must build the bundle first. The bundle is about 3 MB, since it carries the SDK. Stack traces point into the bundle, not the sources.
+`dist/vercel-orca.mjs` is committed, like `vendor/` in `orca-db-studio`: a plugin installed from the Orca directory has no build step, so the bundle must be in the repository. Run `npm run build` and commit `dist/` whenever `src/` or the dependencies change; the `build` check in CI (`npm run build:check`) fails when the committed bundle differs from a fresh build. The bundle is about 3 MB, since it carries the SDK, so each source change makes a large diff in `dist/`. Stack traces point into the bundle, not the sources.

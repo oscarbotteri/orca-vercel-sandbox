@@ -18,7 +18,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "verify": "tsc --noEmit && npm run check && npm test",
-    "build": "node scripts/build.ts"
+    "build": "node scripts/build.ts",
+    "build:check": "npm run build && { test -z \"$(git status --porcelain -- dist)\" || { git status --short -- dist; echo 'dist/ differs from a fresh build: run npm run build and commit'; exit 1; }; }"
   },
   "dependencies": {
     "@vercel/sandbox": "^4.0.0"

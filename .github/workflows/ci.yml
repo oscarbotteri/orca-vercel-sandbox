@@ -46,7 +46,8 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run build
+      # dist/ is committed, since a plugin installed from the directory has no build step.
+      - run: npm run build:check
       # The bundle must start without the checkout's node_modules.
       - run: |
           rm -rf node_modules

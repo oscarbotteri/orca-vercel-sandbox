@@ -19,7 +19,7 @@ npm ci
 npm run verify
 ```
 
-`setup` installs the bundle that `npm run build` writes to `dist/`, so build before running `setup` from a checkout.
+`setup` installs the committed bundle in `dist/`. After changing `src/` or the dependencies, run `npm run build` and commit `dist/`; CI checks it is up to date.
 
 ### Live test
 

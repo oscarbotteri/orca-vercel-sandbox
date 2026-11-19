@@ -8,7 +8,7 @@
 | `lint`              | `npm run lint`                                                                |
 | `typecheck`         | `npm run typecheck`                                                           |
 | `test:coverage`     | `npm run test:coverage`: tests plus an 80% floor on statements, branches, functions and lines |
-| `build`             | `npm run build`, then runs the bundle with `node_modules` removed |
+| `build`             | `npm run build:check` (fails when the committed `dist/` differs from a fresh build), then runs the bundle with `node_modules` removed |
 | `recipe validation` | Orca's own recipe parser on `vm-recipe.json`                                  |
 | `PR title`          | Conventional Commits with the types and scopes of `.claude/skills/commit-pr/SKILL.md` |
 | `secret scan`       | gitleaks over the full history                                                |
