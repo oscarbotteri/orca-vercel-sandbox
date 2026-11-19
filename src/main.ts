@@ -1,4 +1,5 @@
-import { type Command, COMMANDS } from './commands.ts'
+import { COMMANDS, type Command } from './commands.ts'
+import { readEnv, resolveCredentials, VARIABLES } from './credentials.ts'
 import { ensureHome, resolveHome } from './home.ts'
 import { parseLifecyclePayload } from './lifecycle-payload.ts'
 import { createLogger, type Logger, type Sink } from './logger.ts'
@@ -32,7 +33,8 @@ export async function run(argv: string[], io: RunIo): Promise<number> {
   const logger = createLogger({
     file: home.lifecycleLog,
     stderr: io.stderr,
-    secrets: [io.env.VERCEL_TOKEN ?? ''],
+    // Read like resolveCredentials does, so the value the API sees is the one redacted.
+    secrets: [readEnv(io.env, VARIABLES.token) ?? ''],
   })
   return runCommand(name, args, command, io, logger)
 }
@@ -50,7 +52,13 @@ async function runCommand(
     const payload = command.readsPayload ? parseLifecyclePayload(await io.readStdin()) : undefined
     subject = payload ? ` sandbox=${payload.sandbox}` : ''
     logger.info(`${name}${subject} started`)
-    await command.run({ args, logger, stdout: io.stdout, payload })
+    await command.run({
+      args,
+      logger,
+      stdout: io.stdout,
+      credentials: () => resolveCredentials(io.env),
+      payload,
+    })
     logger.info(`${name}${subject} done in ${Date.now() - started}ms`)
     return 0
   } catch (error) {
