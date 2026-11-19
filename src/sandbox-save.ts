@@ -54,12 +54,13 @@ class Collector {
 
   async clearStale(): Promise<void> {
     const stale = await this.repo(`for-each-ref --format='%(refname)' ${SANDBOX_REFS}`)
-    for (const ref of stale.split('\n').filter(Boolean)) await this.repo(`update-ref -d ${ref}`)
+    for (const ref of stale.split('\n').filter(Boolean))
+      await this.repo(`update-ref -d ${shellQuote(ref)}`)
   }
 
   private async keep(name: string, commit: string): Promise<void> {
     const ref = `${SANDBOX_REFS}/${name}`
-    await this.repo(`update-ref ${ref} ${commit}`)
+    await this.repo(`update-ref ${shellQuote(ref)} ${commit}`)
     this.refs.push(ref)
   }
 
@@ -142,7 +143,7 @@ export async function saveUnpushedWork(
   let encoded: string
   try {
     await session.exec(
-      `git -C ${repo} bundle create --quiet ${bundle} ${collector.refs.join(' ')} ^${state.baseCommit}`,
+      `git -C ${repo} bundle create --quiet ${bundle} ${collector.refs.map(shellQuote).join(' ')} ^${state.baseCommit}`,
     )
     encoded = await session.exec(`base64 < ${bundle}`)
   } finally {

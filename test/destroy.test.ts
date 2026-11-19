@@ -131,6 +131,17 @@ describe.skipIf(!sshdAvailable())('vercel-orca destroy', () => {
     expect(show('branches/feature', 'agent.txt')).toBe('agent work')
   })
 
+  it('saves branches whose names hold shell metacharacters', async () => {
+    for (const branch of ['feat;x', 'a`b', 'c$(id)']) {
+      sandboxGit('checkout', '-q', '-b', branch, 'main')
+      sandboxGit('commit', '-q', '--allow-empty', '-m', branch)
+    }
+    sandboxGit('checkout', '-q', 'main')
+    const run = await destroy()
+    expect(run.code).toBe(0)
+    expect(saved().sort()).toEqual(['branches/a`b', 'branches/c$(id)', 'branches/feat;x'])
+  })
+
   it('saves uncommitted changes, untracked files included', async () => {
     writeFileSync(join(work, 'one.txt'), 'edited\n')
     writeFileSync(join(work, 'new.txt'), 'untracked\n')
