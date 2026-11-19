@@ -1,6 +1,7 @@
 import { createCommand } from './create.ts'
 import type { VercelCredentials } from './credentials.ts'
 import { UserError } from './errors.ts'
+import { resumeCommand, suspendCommand } from './lifecycle.ts'
 import type { LifecyclePayload } from './lifecycle-payload.ts'
 import type { Logger, Sink } from './logger.ts'
 import { type Network, proxyCommand, type Tunnel } from './proxy.ts'
@@ -55,8 +56,8 @@ function command(name: string, readsPayload = false): [string, Command] {
 
 export const COMMANDS: ReadonlyMap<string, Command> = new Map([
   ['create', createCommand],
-  command('suspend', true),
-  command('resume', true),
+  ['suspend', suspendCommand],
+  ['resume', resumeCommand],
   command('destroy', true),
   ['proxy', proxyCommand],
   ['setup', setupCommand],

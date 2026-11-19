@@ -9,6 +9,9 @@ export interface FakeSandboxes extends SandboxProvider {
   commands: string[]
   files: { path: string; content: string; mode: number }[]
   deleted: string[]
+  stopped: string[]
+  // Each `get`, with whether it asked to resume.
+  looked: { name: string; resume: boolean }[]
 }
 
 export interface FakeSandboxOptions {
@@ -23,6 +26,8 @@ export interface FakeSandboxOptions {
   // Runs the checkout's git and rm commands for real and keeps the uploaded bundle on disk, so
   // `home` must be a writable directory. Everything else stays recorded only.
   localGit?: boolean
+  // Makes stopping fail, as an API error would.
+  failStop?: boolean
   // Runs when the sandbox is deleted, before the local cleanup follows.
   onDelete?(): void
   // Runs before each command; a promise that never settles holds the create at that step.
@@ -39,11 +44,20 @@ const run = promisify(execFile)
 // A sandbox that runs nothing: it answers the identity questions, records every command and file,
 // and trusts the public key create writes on the local sshd, which stands in for the sandbox's.
 export function fakeSandboxes(sshd: LocalSshd, options: FakeSandboxOptions = {}): FakeSandboxes {
+  const sessions = new Map<string, SandboxSession>()
   const fake: FakeSandboxes = {
     created: [],
     commands: [],
     files: [],
     deleted: [],
+    stopped: [],
+    looked: [],
+    async get(name, { resume = false } = {}) {
+      fake.looked.push({ name, resume })
+      const known = sessions.get(name)
+      if (!known) throw new Error(`no sandbox ${name}`)
+      return known
+    },
     async create(request) {
       fake.created.push(request)
       options.onCreate?.(request.name)
@@ -71,11 +85,16 @@ export function fakeSandboxes(sshd: LocalSshd, options: FakeSandboxOptions = {})
           if (options.localGit && path.endsWith('.bundle')) writeFileSync(path, content)
           if (path.endsWith('authorized_keys') && !options.withholdKey) sshd.authorizeKey(text)
         },
+        async stop() {
+          if (options.failStop) throw new Error('stop failed')
+          fake.stopped.push(request.name)
+        },
         async delete() {
           fake.deleted.push(request.name)
           options.onDelete?.()
         },
       }
+      sessions.set(request.name, session)
       return session
     },
   }
