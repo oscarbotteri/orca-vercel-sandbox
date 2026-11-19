@@ -31,4 +31,5 @@ process.exitCode = await run(process.argv.slice(2), {
   stderr: process.stderr,
   network: { fetch, webSocket: (url) => new WebSocket(url) },
   tunnel: { input: process.stdin, output: process.stdout },
+  process,
 })

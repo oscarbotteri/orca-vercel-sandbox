@@ -1,4 +1,4 @@
-import { COMMANDS, type Command } from './commands.ts'
+import { type CancelSignal, COMMANDS, type Command, type ProcessControl } from './commands.ts'
 import { readEnv, resolveCredentials, VARIABLES } from './credentials.ts'
 import { reasonOf } from './errors.ts'
 import { ensureHome, resolveHome } from './home.ts'
@@ -7,7 +7,7 @@ import { createLogger, type Logger, type Sink } from './logger.ts'
 import type { Network, Tunnel } from './proxy.ts'
 import { type SandboxProvider, vercelSandboxes } from './sandbox-session.ts'
 
-export type { Network, Tunnel }
+export type { CancelSignal, Network, ProcessControl, Tunnel }
 
 export interface RunIo {
   env: NodeJS.ProcessEnv
@@ -17,6 +17,7 @@ export interface RunIo {
   stderr: Sink
   network: Network
   tunnel: Tunnel
+  process: ProcessControl
   // Stands in for Vercel in tests; absent in production.
   sandboxes?: SandboxProvider
 }
@@ -70,6 +71,7 @@ async function runCommand(
       stdout: io.stdout,
       network: io.network,
       tunnel: io.tunnel,
+      process: io.process,
       credentials: () => resolveCredentials(io.env),
       sandboxes: () => io.sandboxes ?? vercelSandboxes(resolveCredentials(io.env), io.network),
       payload,

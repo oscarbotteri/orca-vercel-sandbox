@@ -7,6 +7,15 @@ import { type Network, proxyCommand, type Tunnel } from './proxy.ts'
 import type { SandboxProvider } from './sandbox-session.ts'
 import { setupCommand, uninstallCommand } from './setup.ts'
 
+// The part of the process that `create` needs to clean up when it is cancelled.
+export type CancelSignal = 'SIGINT' | 'SIGTERM' | 'SIGHUP'
+
+export interface ProcessControl {
+  once(signal: CancelSignal, listener: (signal: CancelSignal) => void): unknown
+  off(signal: CancelSignal, listener: (signal: CancelSignal) => void): unknown
+  exit(code: number): unknown
+}
+
 export interface CommandContext {
   args: string[]
   env: NodeJS.ProcessEnv
@@ -19,6 +28,8 @@ export interface CommandContext {
   network: Network
   // What ssh sends and receives; only `proxy` uses it, since stdout belongs to `create`.
   tunnel: Tunnel
+  // Where signals arrive; only `create` listens, to delete its sandbox when cancelled.
+  process: ProcessControl
   // Resolved on demand so a command that never calls the API does not need them.
   credentials(): VercelCredentials
   // The Vercel sandboxes; resolved on demand like the credentials.

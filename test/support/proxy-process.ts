@@ -14,4 +14,5 @@ process.exitCode = await run(['proxy', process.argv[2] ?? ''], {
   stderr: process.stderr,
   network: fakeNetwork(apiUrl, bridgePort),
   tunnel: { input: process.stdin, output: process.stdout },
+  process,
 })

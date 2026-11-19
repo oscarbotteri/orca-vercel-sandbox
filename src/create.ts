@@ -1,19 +1,24 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import type { Command, CommandContext } from './commands.ts'
+import type { CancelSignal, Command, CommandContext } from './commands.ts'
+import { createCleanup } from './create-cleanup.ts'
 import { reasonOf, UserError } from './errors.ts'
 import { type CheckoutSource, prepareCheckout } from './git-bundle.ts'
 import { type AdapterHome, resolveHome } from './home.ts'
 import { shellQuote, wrapperPath } from './install.ts'
+import { knownHostsPath } from './known-hosts.ts'
 import { BRIDGE_PORT } from './lifecycle-payload.ts'
 import { checkoutBundle } from './sandbox-checkout.ts'
 import type { SandboxSession } from './sandbox-session.ts'
 import { installSshBridge, readBridgeLog, readIdentity, startSshBridge } from './sandbox-ssh.ts'
-import { addSandboxHost, removeSandboxHost } from './ssh-config.ts'
-import { generateKey, removeKey } from './ssh-keys.ts'
+import { addSandboxHost } from './ssh-config.ts'
+import { generateKey } from './ssh-keys.ts'
 
 const VERIFY_ATTEMPTS = 6
 const VERIFY_DELAY_MS = 500
+// 128 plus the signal number, as a shell reports a process killed by it.
+const CANCEL_EXIT_CODES: Record<CancelSignal, number> = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 }
+const CANCEL_SIGNALS = Object.keys(CANCEL_EXIT_CODES) as CancelSignal[]
 
 interface CreateResult {
   sshTarget: { host: string; port: number; username: string; proxyCommand: string }
@@ -33,6 +38,8 @@ function sshAttempt(home: AdapterHome, name: string, env: NodeJS.ProcessEnv): Pr
         'BatchMode=yes',
         '-o',
         'StrictHostKeyChecking=accept-new',
+        '-o',
+        `UserKnownHostsFile=${knownHostsPath(env)}`,
         '-o',
         'ConnectTimeout=20',
         name,
@@ -88,31 +95,35 @@ async function provision(
 }
 
 async function runCreate(context: CommandContext): Promise<void> {
-  const { logger, sandboxes, stdout } = context
+  const { logger, sandboxes, stdout, process } = context
   const home = resolveHome(context.env)
   const name = `orca-${randomBytes(3).toString('hex')}`
   const provider = sandboxes()
   // Bundled before the sandbox exists: a repo Git cannot bundle costs nothing.
   const source = await prepareCheckout(context.env)
   logger.info(`create ${name}: creating the sandbox with port ${BRIDGE_PORT} published`)
-  const session = await provider.create({ name, ports: [BRIDGE_PORT] })
+  // A signal can arrive before provider.create resolves; cleanup then waits for the session.
+  const creating = provider.create({ name, ports: [BRIDGE_PORT] })
+  const cleanup = createCleanup({ name, home, env: context.env, logger }, () => creating)
+  // `once` on purpose: a second signal gets the default action, so a hung cleanup can be escaped.
+  function cancel(signal: CancelSignal): void {
+    logger.error(`create ${name}: cancelled by ${signal}`)
+    void cleanup().finally(() => process.exit(CANCEL_EXIT_CODES[signal]))
+  }
+  for (const signal of CANCEL_SIGNALS) process.once(signal, cancel)
+  let created = false
   try {
+    const session = await creating
+    created = true
     const result = await provision(session, context, home, source)
     stdout.write(`${JSON.stringify(result)}\n`)
   } catch (error) {
-    logger.error(`create ${name}: removing the sandbox after: ${reasonOf(error)}`)
-    // The sandbox costs money, so it goes first and a failing local cleanup cannot stop it.
-    await session.delete().catch((deleteError: unknown) => {
-      logger.error(`create ${name}: could not delete the sandbox: ${reasonOf(deleteError)}`)
-    })
-    try {
-      // The private key first: it is the only sensitive file.
-      removeKey(home, name)
-      removeSandboxHost(home.sshConfig, name)
-    } catch (cleanupError) {
-      logger.error(`create ${name}: could not remove local files: ${reasonOf(cleanupError)}`)
-    }
+    logger.error(`create ${name}: failed: ${reasonOf(error)}`)
+    // Without a sandbox nothing was provisioned: no key, SSH block or known_hosts entry either.
+    if (created) await cleanup()
     throw error
+  } finally {
+    for (const signal of CANCEL_SIGNALS) process.off(signal, cancel)
   }
 }
 

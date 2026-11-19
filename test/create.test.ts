@@ -11,8 +11,10 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CancelSignal, ProcessControl } from '../src/main.ts'
 import { CREDENTIAL_ENV, sandboxBody } from './support/fake-network.ts'
+import { type FakeProcess, fakeProcess } from './support/fake-process.ts'
 import {
   type FakeSandboxes,
   type FakeSandboxOptions,
@@ -24,6 +26,7 @@ import { type LocalSshd, sshdAvailable, startLocalSshd } from './support/local-s
 import { cleanupHomes, runCli } from './support/run-cli.ts'
 import { startWsBridge, type WsBridge } from './support/ws-bridge.ts'
 
+const HOST_KEY = 'AAAAC3NzaC1lZDI1NTE5AAAAIOMqqetCUJ5mKJ1bpmqAkWgl+rWzGBtpBN2ZPUB5rJJt'
 const PROXY_PROCESS = join(dirname(fileURLToPath(import.meta.url)), 'support', 'proxy-process.ts')
 
 afterEach(cleanupHomes)
@@ -64,6 +67,7 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
     options: FakeSandboxOptions = {},
     userHome?: string,
     orcaEnv?: Record<string, string>,
+    proc?: ProcessControl,
   ) {
     sandboxHome = tempDir('vercel-orca-sandbox-')
     repo ??= makeRepo()
@@ -87,6 +91,7 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
       sandboxes,
       network: { apiUrl: api.url, bridgePort: bridge.port },
       userHome,
+      process: proc,
       beforeRun: installShim,
     })
     return { run, name: sandboxes.created[0]?.name as string }
@@ -277,6 +282,24 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
     expect(existsSync(join(run.home, 'ssh_config'))).toBe(false)
   })
 
+  it.each([
+    ['reading the identity', { failOn: 'id -un' }],
+    ['installing the bridge', { failOn: 'openssh-server' }],
+    ['starting the bridge', { failOn: 'ws-l:0.0.0.0' }],
+    ['verifying the SSH connection', { withholdKey: true }],
+  ])('leaves no sandbox, key or SSH block when %s fails', async (_step, options) => {
+    const { run, name } = await create(options)
+    expect(run.code).toBe(1)
+    expect(sandboxes.deleted).toEqual([name])
+    expect(existsSync(join(run.home, 'keys', name))).toBe(false)
+    expect(existsSync(join(run.home, 'keys', `${name}.pub`))).toBe(false)
+    const config = existsSync(join(run.home, 'ssh_config'))
+      ? readFileSync(join(run.home, 'ssh_config'), 'utf8')
+      : ''
+    expect(config).not.toContain(name)
+    expect(run.readLog()).toContain(`create ${name}: cleanup done`)
+  })
+
   it('does not print a result when the SSH connection cannot be verified', async () => {
     const { run } = await create({ withholdKey: true })
     expect(run.code).toBe(1)
@@ -328,5 +351,141 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
     expect(run.code).toBe(1)
     expect(existsSync(join(run.home, 'keys', name))).toBe(false)
     rmSync(userHome, { recursive: true, force: true })
+  })
+
+  describe('when cancelled', () => {
+    function holdAt(step: string, proc: () => FakeProcess, signal: CancelSignal) {
+      return (command: string) => {
+        if (!command.includes(step)) return undefined
+        proc().raise(signal)
+        return new Promise<void>(() => {})
+      }
+    }
+
+    it.each([
+      ['SIGINT', 130],
+      ['SIGTERM', 143],
+      ['SIGHUP', 129],
+    ] as const)(
+      'removes the sandbox, key and SSH block on %s and exits %i',
+      async (signal, exitCode) => {
+        const proc = fakeProcess()
+        const userHome = mkdtempSync(join(tmpdir(), 'vercel-orca-create-'))
+        void create(
+          { onCommand: holdAt('openssh-server', () => proc, signal) },
+          userHome,
+          undefined,
+          proc,
+        )
+        await proc.exited
+        const name = sandboxes.created[0]?.name as string
+        const home = join(userHome, '.vercel-orca')
+        expect(proc.exitCodes).toEqual([exitCode])
+        expect(sandboxes.deleted).toEqual([name])
+        expect(existsSync(join(home, 'keys', name))).toBe(false)
+        expect(existsSync(join(home, 'ssh_config'))).toBe(false)
+        expect(readFileSync(join(home, 'lifecycle.log'), 'utf8')).toContain(
+          `create ${name}: cleanup done`,
+        )
+        rmSync(userHome, { recursive: true, force: true })
+      },
+    )
+
+    it('waits for a sandbox that is still being created, then removes it', async () => {
+      const proc = fakeProcess()
+      let release: () => void = () => {}
+      const userHome = mkdtempSync(join(tmpdir(), 'vercel-orca-create-'))
+      const finished = create(
+        {
+          beforeCreateResolves: () => {
+            // The handler is registered right after provider.create is called.
+            setTimeout(() => proc.raise('SIGINT'), 0)
+            return new Promise<void>((resolve) => {
+              release = resolve
+            })
+          },
+        },
+        userHome,
+        undefined,
+        proc,
+      )
+      await vi.waitFor(() => expect(sandboxes.created).toHaveLength(1))
+      expect(proc.exitCodes).toEqual([])
+      release()
+      await proc.exited
+      expect(sandboxes.deleted).toEqual([sandboxes.created[0]?.name])
+      expect(proc.exitCodes).toEqual([130])
+      // The run carries on after the (fake) exit and logs its own failure: let it end first.
+      await finished
+      rmSync(userHome, { recursive: true, force: true })
+    })
+
+    it('stops waiting for a sandbox that never comes back and still cleans up', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      try {
+        const proc = fakeProcess()
+        const userHome = mkdtempSync(join(tmpdir(), 'vercel-orca-create-'))
+        const pending = create(
+          { beforeCreateResolves: () => new Promise<void>(() => {}) },
+          userHome,
+          undefined,
+          proc,
+        )
+        await vi.waitFor(() => expect(sandboxes.created).toHaveLength(1))
+        proc.raise('SIGINT')
+        await vi.advanceTimersByTimeAsync(10_000)
+        await proc.exited
+        expect(proc.exitCodes).toEqual([130])
+        expect(sandboxes.deleted).toEqual([])
+        const log = readFileSync(join(userHome, '.vercel-orca', 'lifecycle.log'), 'utf8')
+        expect(log).toContain('may still need deleting')
+        void pending
+        rmSync(userHome, { recursive: true, force: true })
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('does not listen for signals once create has finished', async () => {
+      const proc = fakeProcess()
+      await create({}, undefined, undefined, proc)
+      proc.raise('SIGINT')
+      expect(proc.exitCodes).toEqual([])
+      expect(sandboxes.deleted).toEqual([])
+    })
+  })
+
+  it('reports a failed sandbox creation without any cleanup', async () => {
+    const { run } = await create({
+      beforeCreateResolves: async () => {
+        throw new Error('quota exceeded')
+      },
+    })
+    expect(run.code).toBe(1)
+    expect(run.stderr).toContain('quota exceeded')
+    expect(run.readLog()).not.toContain('cleanup')
+    expect(sandboxes.deleted).toEqual([])
+  })
+
+  describe('known_hosts', () => {
+    it('removes the entry ssh recorded when the SSH check fails after the key was trusted', async () => {
+      const userHome = mkdtempSync(join(tmpdir(), 'vercel-orca-create-'))
+      const knownHosts = join(userHome, '.ssh', 'known_hosts')
+      let name = ''
+      const { run } = await create(
+        {
+          failOn: 'websocat.log',
+          onDelete: () => {
+            name = sandboxes.created[0]?.name as string
+            mkdirSync(join(userHome, '.ssh'), { recursive: true })
+            writeFileSync(knownHosts, `${name} ssh-ed25519 ${HOST_KEY}\n`)
+          },
+        },
+        userHome,
+      )
+      expect(run.code).toBe(1)
+      expect(readFileSync(knownHosts, 'utf8')).not.toContain(name)
+      rmSync(userHome, { recursive: true, force: true })
+    })
   })
 })
