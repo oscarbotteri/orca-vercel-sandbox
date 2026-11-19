@@ -22,7 +22,7 @@ export function wrapperPath(home: AdapterHome): string {
   return join(home.bin, WRAPPER_NAME)
 }
 
-function shellQuote(text: string): string {
+export function shellQuote(text: string): string {
   return `'${text.replaceAll("'", `'\\''`)}'`
 }
 

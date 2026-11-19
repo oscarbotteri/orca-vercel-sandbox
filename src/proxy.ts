@@ -3,10 +3,7 @@ import { Sandbox } from '@vercel/sandbox'
 import type { Command, CommandContext } from './commands.ts'
 import type { VercelCredentials } from './credentials.ts'
 import { reasonOf, UserError } from './errors.ts'
-import { SANDBOX_NAME } from './lifecycle-payload.ts'
-
-// The port the SSH bridge listens on in the sandbox, published at create.
-const BRIDGE_PORT = 8080
+import { BRIDGE_PORT, SANDBOX_NAME } from './lifecycle-payload.ts'
 
 export interface Network {
   fetch: typeof globalThis.fetch

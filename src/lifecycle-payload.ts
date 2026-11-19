@@ -10,6 +10,9 @@ interface RawPayload {
   }
 }
 
+// The port the SSH bridge listens on in the sandbox, published at create.
+export const BRIDGE_PORT = 8080
+
 export const SANDBOX_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 
 function text(value: unknown): string | undefined {

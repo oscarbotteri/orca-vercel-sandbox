@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { run } from '../../src/main.ts'
+import type { SandboxProvider } from '../../src/sandbox-session.ts'
 import { fakeNetwork } from './fake-network.ts'
 
 export interface CliRun {
@@ -27,6 +28,8 @@ export interface CliOptions {
   confirm?: boolean
   // Redirects the Vercel API and the published URL to these local servers.
   network?: { apiUrl: string; bridgePort: number }
+  // Replaces the Vercel sandboxes `create` would make.
+  sandboxes?: SandboxProvider
   // Bytes the tunnel reads from the person's side (what ssh would send).
   tunnelInput?: Readable
   // Makes every write to the tunnel's output fail, as a closed ssh would (EPIPE).
@@ -70,6 +73,7 @@ export async function runCli(argv: string[], options: CliOptions = {}): Promise<
         stderr += text
       },
     },
+    sandboxes: options.sandboxes,
     network: options.network
       ? fakeNetwork(options.network.apiUrl, options.network.bridgePort)
       : fakeNetwork('http://127.0.0.1:1', 1),

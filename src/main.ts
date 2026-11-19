@@ -5,6 +5,7 @@ import { ensureHome, resolveHome } from './home.ts'
 import { parseLifecyclePayload } from './lifecycle-payload.ts'
 import { createLogger, type Logger, type Sink } from './logger.ts'
 import type { Network, Tunnel } from './proxy.ts'
+import { type SandboxProvider, vercelSandboxes } from './sandbox-session.ts'
 
 export type { Network, Tunnel }
 
@@ -16,6 +17,8 @@ export interface RunIo {
   stderr: Sink
   network: Network
   tunnel: Tunnel
+  // Stands in for Vercel in tests; absent in production.
+  sandboxes?: SandboxProvider
 }
 
 const EXIT_FAILED = 1
@@ -68,6 +71,7 @@ async function runCommand(
       network: io.network,
       tunnel: io.tunnel,
       credentials: () => resolveCredentials(io.env),
+      sandboxes: () => io.sandboxes ?? vercelSandboxes(resolveCredentials(io.env), io.network),
       payload,
     })
     logger.info(`${name}${subject} done in ${Date.now() - started}ms`)
