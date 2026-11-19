@@ -4,3 +4,7 @@ export class UserError extends Error {
     this.name = 'UserError'
   }
 }
+
+export function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}

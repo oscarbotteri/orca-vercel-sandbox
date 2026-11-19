@@ -1,12 +1,16 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Readable, Writable } from 'node:stream'
 import { run } from '../../src/main.ts'
+import { fakeNetwork } from './fake-network.ts'
 
 export interface CliRun {
   code: number
   stdout: string
   stderr: string
+  // What the tunnel wrote to the person's side (what ssh would receive).
+  tunnelOutput: Buffer
   // The adapter's home, `~/.vercel-orca` under the temporary user home.
   home: string
   // The temporary user home, standing in for `$HOME`.
@@ -21,6 +25,10 @@ export interface CliOptions {
   env?: Record<string, string>
   // Answer to every confirmation prompt; declines when absent.
   confirm?: boolean
+  // Redirects the Vercel API and the published URL to these local servers.
+  network?: { apiUrl: string; bridgePort: number }
+  // Bytes the tunnel reads from the person's side (what ssh would send).
+  tunnelInput?: Readable
   // Reuse the user home of an earlier run instead of creating a fresh one.
   userHome?: string
   // Seed the user home before the command runs.
@@ -41,6 +49,7 @@ export async function runCli(argv: string[], options: CliOptions = {}): Promise<
   const questions: string[] = []
   let stdout = ''
   let stderr = ''
+  const tunnelChunks: Buffer[] = []
   const env = { ...process.env, HOME: userHome, VERCEL_ORCA_HOME: home, ...options.env }
   const code = await run(argv, {
     env,
@@ -59,11 +68,24 @@ export async function runCli(argv: string[], options: CliOptions = {}): Promise<
         stderr += text
       },
     },
+    network: options.network
+      ? fakeNetwork(options.network.apiUrl, options.network.bridgePort)
+      : fakeNetwork('http://127.0.0.1:1', 1),
+    tunnel: {
+      input: options.tunnelInput ?? Readable.from([]),
+      output: new Writable({
+        write(chunk: Buffer, _encoding, done) {
+          tunnelChunks.push(chunk)
+          done()
+        },
+      }),
+    },
   })
   return {
     code,
     stdout,
     stderr,
+    tunnelOutput: Buffer.concat(tunnelChunks),
     home,
     userHome,
     questions,
