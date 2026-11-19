@@ -107,7 +107,7 @@ The plugin is ready to publish when a person can:
 
 **Setup**
 
-- `setup` checks Node, Git, OpenSSH and the Vercel credentials, installs the adapter in `~/.vercel-orca`, and asks before adding the `Include` line to `~/.ssh/config` (with a backup).
+- `setup` checks Node, Git, OpenSSH and the Vercel credentials, installs the adapter in `~/.vercel-orca` (one bundled file with its dependencies, ADR 0004), and asks before adding the `Include` line to `~/.ssh/config` (with a backup).
 - `doctor` checks everything without creating anything, warns on the Hobby plan's short session limit, and lists sandboxes the plugin created that no workspace uses.
 - `uninstall` removes the `Include` line and the adapter's files.
 - Settings for new workspaces: image, vCPUs, memory, timeout, region (flags to `setup` or `~/.vercel-orca/config.json`). Memory is 2048 MB per vCPU on Vercel, so it must agree with the vCPUs (or is given instead of them). Only Debian and Ubuntu based images on x86_64 are supported; `create` fails early when `apt-get` is missing.

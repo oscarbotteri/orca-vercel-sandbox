@@ -19,6 +19,8 @@ npm ci
 npm run verify
 ```
 
+`setup` installs the committed bundle in `dist/`. After changing `src/` or the dependencies, run `npm run build` and commit `dist/`; CI checks it is up to date.
+
 ### Live test
 
 `test/live.test.ts` runs create, sleep, wake, pull and remove against a real Vercel Sandbox. It costs money, so it is skipped unless `VERCEL_ORCA_LIVE_TEST` is set. It needs the same credentials as the adapter and deletes its sandbox even when a step fails.

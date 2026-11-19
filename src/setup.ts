@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { Command } from './commands.ts'
 import { type AdapterHome, resolveHome } from './home.ts'
-import { installAdapter, removeAdapterFiles } from './install.ts'
+import { BUNDLE_FILE, installAdapter, removeAdapterFiles } from './install.ts'
 import { assertPrerequisites } from './prerequisites.ts'
 import { saveSettings, settingsFromFlags } from './settings.ts'
 import {
@@ -14,7 +14,8 @@ import {
   userSshConfigPath,
 } from './ssh-config.ts'
 
-const SOURCE_DIR = import.meta.dirname
+// Built by `npm run build` from this checkout's sources.
+const BUNDLE = join(import.meta.dirname, '..', 'dist', BUNDLE_FILE)
 
 // Records that setup, not the user, added the Include line, so uninstall removes only its own edit.
 function includeMarker(home: AdapterHome): string {
@@ -32,7 +33,7 @@ export const setupCommand: Command = {
       saveSettings(home, flags)
       logger.info(`saved sandbox settings in ${home.config}`)
     }
-    installAdapter(home, SOURCE_DIR)
+    installAdapter(home, BUNDLE)
     logger.info(`adapter installed in ${home.root}`)
 
     const sshConfig = userSshConfigPath(env, homedir())
