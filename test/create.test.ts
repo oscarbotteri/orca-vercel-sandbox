@@ -19,6 +19,7 @@ import {
   fakeSandboxes,
 } from './support/fake-sandbox.ts'
 import { type FakeVercelApi, startFakeVercelApi } from './support/fake-vercel-api.ts'
+import { cleanupGitDirs, git, type LocalRepo, makeRepo, tempDir } from './support/git-repo.ts'
 import { type LocalSshd, sshdAvailable, startLocalSshd } from './support/local-sshd.ts'
 import { cleanupHomes, runCli } from './support/run-cli.ts'
 import { startWsBridge, type WsBridge } from './support/ws-bridge.ts'
@@ -26,14 +27,18 @@ import { startWsBridge, type WsBridge } from './support/ws-bridge.ts'
 const PROXY_PROCESS = join(dirname(fileURLToPath(import.meta.url)), 'support', 'proxy-process.ts')
 
 afterEach(cleanupHomes)
+afterEach(cleanupGitDirs)
 
 describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
   let sshd: LocalSshd
   let bridge: WsBridge
   let api: FakeVercelApi
   let sandboxes: FakeSandboxes
+  let sandboxHome: string
+  let repo: LocalRepo | undefined
 
   beforeEach(async () => {
+    repo = undefined
     sshd = await startLocalSshd()
     bridge = await startWsBridge(sshd.port)
     api = await startFakeVercelApi()
@@ -54,14 +59,31 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
   }
 
   // Runs `create` against a fake sandbox; the fake Vercel API learns each name the proxy looks up.
-  async function create(options: FakeSandboxOptions = {}, userHome?: string) {
+  // The checkout runs for real in a temporary directory that stands in for the sandbox's home.
+  async function create(
+    options: FakeSandboxOptions = {},
+    userHome?: string,
+    orcaEnv?: Record<string, string>,
+  ) {
+    sandboxHome = tempDir('vercel-orca-sandbox-')
+    repo ??= makeRepo()
     sandboxes = fakeSandboxes(sshd, {
+      home: sandboxHome,
+      localGit: true,
       ...options,
       onCreate: (name) =>
         api.on('GET', `/v2/sandboxes/${name}`, () => ({ body: sandboxBody(name) })),
     })
     const run = await runCli(['create'], {
-      env: { ...CREDENTIAL_ENV, FAKE_API_URL: api.url, FAKE_BRIDGE_PORT: String(bridge.port) },
+      env: {
+        ...CREDENTIAL_ENV,
+        ORCA_REPO_PATH: repo.path,
+        ORCA_REPO_BRANCH: 'main',
+        ORCA_REPO_REF_HEAD: repo.head,
+        ...orcaEnv,
+        FAKE_API_URL: api.url,
+        FAKE_BRIDGE_PORT: String(bridge.port),
+      },
       sandboxes,
       network: { apiUrl: api.url, bridgePort: bridge.port },
       userHome,
@@ -82,8 +104,117 @@ describe.skipIf(!sshdAvailable())('vercel-orca create', () => {
         username: sshd.user,
         proxyCommand: `'${join(run.home, 'bin', 'vercel-orca')}' proxy ${sandbox}`,
       },
-      projectRoot: '/vercel/work',
+      projectRoot: `${sandboxHome}/work/project`,
       userData: { resourceId: sandbox },
+    })
+  })
+
+  describe('git checkout', () => {
+    const inSandbox = (dir = 'project') => join(sandboxHome, 'work', dir)
+
+    it('puts a new branch on the commit Orca picked', async () => {
+      repo = makeRepo()
+      const { run } = await create({}, undefined, {
+        ORCA_REPO_BRANCH: 'feature/new',
+        ORCA_REPO_REF_HEAD: repo.first,
+      })
+      expect(run.code).toBe(0)
+      expect(git(inSandbox(), 'symbolic-ref', 'HEAD')).toBe('refs/heads/feature/new')
+      expect(git(inSandbox(), 'rev-parse', 'HEAD')).toBe(repo.first)
+      expect(JSON.parse(run.stdout).projectRoot).toBe(inSandbox())
+    })
+
+    it('checks out an existing branch with its history', async () => {
+      repo = makeRepo()
+      git(repo.path, 'branch', 'work', repo.head)
+      const { run } = await create({}, undefined, { ORCA_REPO_BRANCH: 'refs/heads/work' })
+      expect(run.code).toBe(0)
+      expect(git(inSandbox(), 'symbolic-ref', 'HEAD')).toBe('refs/heads/work')
+      expect(git(inSandbox(), 'rev-parse', 'HEAD')).toBe(repo.head)
+      expect(git(inSandbox(), 'rev-list', '--count', 'HEAD')).toBe('2')
+      expect(git(inSandbox(), 'status', '--porcelain')).toBe('')
+    })
+
+    it('detaches at the commit when Orca picked no branch', async () => {
+      repo = makeRepo()
+      const { run } = await create({}, undefined, {
+        ORCA_REPO_BRANCH: '',
+        ORCA_REPO_REF_HEAD: repo.first,
+      })
+      expect(run.code).toBe(0)
+      expect(() => git(inSandbox(), 'symbolic-ref', '--quiet', 'HEAD')).toThrow()
+      expect(git(inSandbox(), 'rev-parse', 'HEAD')).toBe(repo.first)
+    })
+
+    it('resolves the ref when Orca sent no commit', async () => {
+      repo = makeRepo()
+      await create({}, undefined, { ORCA_REPO_REF_HEAD: '', ORCA_REPO_REF: 'main~1' })
+      expect(git(inSandbox(), 'rev-parse', 'HEAD')).toBe(repo.first)
+    })
+
+    it('sets the git identity and an HTTPS origin without credentials', async () => {
+      repo = makeRepo()
+      await create({}, undefined, {
+        ORCA_REPO_URL: 'https://user:secret-token@github.com/acme/project.git',
+      })
+      expect(git(inSandbox(), 'config', 'user.name')).toBe('Ada Lovelace')
+      expect(git(inSandbox(), 'config', 'user.email')).toBe('ada@example.com')
+      expect(git(inSandbox(), 'remote', 'get-url', 'origin')).toBe(
+        'https://github.com/acme/project.git',
+      )
+      expect(sandboxes.commands.join('\n')).not.toContain('secret-token')
+    })
+
+    it('turns an SSH remote into its HTTPS form', async () => {
+      repo = makeRepo()
+      await create({}, undefined, { ORCA_REPO_URL: 'git@github.com:acme/project.git' })
+      expect(git(inSandbox(), 'remote', 'get-url', 'origin')).toBe(
+        'https://github.com/acme/project.git',
+      )
+    })
+
+    it('adds no origin when the repository has no remote', async () => {
+      repo = makeRepo()
+      await create({}, undefined, { ORCA_REPO_URL: '' })
+      expect(git(inSandbox(), 'remote')).toBe('')
+    })
+
+    it('sends no credential and leaves the local repository untouched', async () => {
+      repo = makeRepo()
+      const { run } = await create({}, undefined, { GITHUB_TOKEN: 'ghp_secret' })
+      const sent = [...sandboxes.commands, ...sandboxes.files.map((file) => file.content)].join(
+        '\n',
+      )
+      expect(sent).not.toContain('ghp_secret')
+      expect(run.code).toBe(0)
+      expect(git(repo.path, 'for-each-ref', 'refs/vercel-orca')).toBe('')
+      expect(sandboxes.files.some((file) => file.path.endsWith('checkout.bundle'))).toBe(true)
+      expect(existsSync(join(sandboxHome, 'checkout.bundle'))).toBe(false)
+    })
+
+    it('fails before creating a sandbox when the repository has no git identity', async () => {
+      repo = makeRepo('project', false)
+      const { run } = await create({}, undefined, {
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_NOSYSTEM: '1',
+      })
+      expect(run.code).toBe(1)
+      expect(run.stderr).toContain('user.name')
+      expect(sandboxes.created).toHaveLength(0)
+    })
+
+    it('fails before creating a sandbox when Orca names no repository', async () => {
+      const { run } = await create({}, undefined, { ORCA_REPO_PATH: '' })
+      expect(run.code).toBe(1)
+      expect(run.stderr).toContain('which repository')
+      expect(sandboxes.created).toHaveLength(0)
+    })
+
+    it('deletes the sandbox when the commit cannot be unpacked', async () => {
+      const { run, name } = await create({ failOn: 'fetch --quiet' })
+      expect(run.code).toBe(1)
+      expect(run.stdout).toBe('')
+      expect(sandboxes.deleted).toEqual([name])
     })
   })
 

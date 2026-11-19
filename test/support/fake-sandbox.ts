@@ -1,3 +1,6 @@
+import { execFile } from 'node:child_process'
+import { writeFileSync } from 'node:fs'
+import { promisify } from 'node:util'
 import type { ExecOptions, SandboxProvider, SandboxSession } from '../../src/sandbox-session.ts'
 import type { LocalSshd } from './local-sshd.ts'
 
@@ -17,6 +20,9 @@ export interface FakeSandboxOptions {
   user?: string
   home?: string
   bridgeLog?: string
+  // Runs the checkout's git and rm commands for real and keeps the uploaded bundle on disk, so
+  // `home` must be a writable directory. Everything else stays recorded only.
+  localGit?: boolean
   // Runs when the sandbox is deleted, before the local cleanup follows.
   onDelete?(): void
   // Called with each new sandbox's name, e.g. to make the fake Vercel API know it.
@@ -24,6 +30,7 @@ export interface FakeSandboxOptions {
 }
 
 const HOME = '/vercel'
+const run = promisify(execFile)
 
 // A sandbox that runs nothing: it answers the identity questions, records every command and file,
 // and trusts the public key create writes on the local sshd, which stands in for the sandbox's.
@@ -43,14 +50,20 @@ export function fakeSandboxes(sshd: LocalSshd, options: FakeSandboxOptions = {})
           if (options.failOn && command.includes(options.failOn)) {
             throw new Error(`command failed: ${command}`)
           }
+          if (options.localGit && /^(git|rm) /.test(command)) {
+            return (await run('sh', ['-c', command])).stdout
+          }
           if (command === 'id -un') return options.user ?? sshd.user
           if (command === 'printf %s "$HOME"') return options.home ?? HOME
           if (command.startsWith('tail ')) return options.bridgeLog ?? ''
           return ''
         },
         async writeFile(path, content, mode) {
-          fake.files.push({ path, content, mode })
-          if (path.endsWith('authorized_keys') && !options.withholdKey) sshd.authorizeKey(content)
+          const text =
+            typeof content === 'string' ? content : Buffer.from(content).toString('latin1')
+          fake.files.push({ path, content: text, mode })
+          if (options.localGit && path.endsWith('.bundle')) writeFileSync(path, content)
+          if (path.endsWith('authorized_keys') && !options.withholdKey) sshd.authorizeKey(text)
         },
         async delete() {
           fake.deleted.push(request.name)
