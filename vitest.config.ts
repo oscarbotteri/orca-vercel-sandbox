@@ -2,6 +2,8 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
+    // Some tests start real ssh processes, which are slow on CI runners.
+    testTimeout: 30_000,
     coverage: {
       provider: 'v8',
       // Product code only: the fakes under test/support are not measured.

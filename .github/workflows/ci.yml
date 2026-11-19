@@ -57,7 +57,11 @@ jobs:
           git -C orca checkout FETCH_HEAD
       - name: Install the validator's dependencies
         working-directory: orca
-        run: npm install --no-save --no-package-lock --ignore-scripts zod@4.6.7 yaml@2.9.1 tsx@4.23.15
+        run: |
+          # Orca's own package.json uses workspace: dependencies that a plain npm cannot install.
+          rm package.json
+          npm init -y > /dev/null
+          npm install --no-package-lock --ignore-scripts zod@4.6.7 yaml@2.9.1 tsx@4.23.15
       - name: Validate vm-recipe.json
         working-directory: orca
         run: |
