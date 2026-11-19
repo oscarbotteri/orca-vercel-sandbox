@@ -32,7 +32,6 @@ class FakeSocket extends EventTarget {
 
 const LIMITS: PipeLimits = {
   openTimeoutMs: 1000,
-  keepAliveMs: 100,
   sendHighWater: 10,
   receiveHighWater: 10,
 }
@@ -89,20 +88,6 @@ describe('pipeThrough open timeout', () => {
   })
 })
 
-describe('pipeThrough keep-alive', () => {
-  it('sends an empty message while idle and stops after close', async () => {
-    const socket = new FakeSocket()
-    const done = pipe(socket)
-    socket.open()
-    await vi.advanceTimersByTimeAsync(250)
-    expect(socket.sent.map((chunk) => chunk.length)).toEqual([0, 0])
-    socket.closeWith(1000)
-    await done
-    await vi.advanceTimersByTimeAsync(500)
-    expect(socket.sent).toHaveLength(2)
-  })
-})
-
 describe('pipeThrough sending backpressure', () => {
   it('waits for bufferedAmount to drain before sending the next chunk', async () => {
     vi.useRealTimers()
@@ -115,10 +100,10 @@ describe('pipeThrough sending backpressure', () => {
     socket.bufferedAmount = 50
     input.write(Buffer.from('b'))
     await new Promise((resolve) => setTimeout(resolve, 60))
-    expect(socket.sent.filter((chunk) => chunk.length > 0)).toHaveLength(1)
+    expect(socket.sent).toHaveLength(1)
     socket.bufferedAmount = 0
     await new Promise((resolve) => setTimeout(resolve, 60))
-    expect(socket.sent.filter((chunk) => chunk.length > 0)).toHaveLength(2)
+    expect(socket.sent).toHaveLength(2)
     socket.closeWith(1000)
     await done
   })
@@ -150,7 +135,7 @@ describe('pipeThrough receiving backpressure', () => {
 })
 
 describe('pipeThrough failures', () => {
-  it('rejects on a text message, closes the socket and stops the keep-alive', async () => {
+  it('rejects on a text message, closes the socket', async () => {
     const socket = new FakeSocket()
     const done = pipe(socket)
     const assertion = expect(done).rejects.toThrow('the bridge sent a text message')
@@ -158,7 +143,6 @@ describe('pipeThrough failures', () => {
     socket.message('hello')
     await assertion
     expect(socket.closed).toBeDefined()
-    await vi.advanceTimersByTimeAsync(500)
     expect(socket.sent).toHaveLength(0)
   })
 
@@ -189,17 +173,25 @@ describe('pipeThrough failures', () => {
     await assertion
   })
 
-  it('stays quiet while data keeps flowing', async () => {
+  it("sends nothing while idle: an empty message would end the bridge's TCP side", async () => {
     const socket = new FakeSocket()
-    const input = new PassThrough()
-    const done = pipe(socket, input)
+    const done = pipe(socket)
     socket.open()
-    for (let tick = 0; tick < 4; tick++) {
-      await vi.advanceTimersByTimeAsync(60)
-      input.write(Buffer.from('x'))
-    }
-    expect(socket.sent.every((chunk) => chunk.length > 0)).toBe(true)
+    await vi.advanceTimersByTimeAsync(600_000)
+    expect(socket.sent).toHaveLength(0)
     socket.closeWith(1000)
     await done
+  })
+
+  it('leaves the output alone when the close arrives after a failure', async () => {
+    const socket = new FakeSocket()
+    const output = new PassThrough()
+    const write = vi.spyOn(output, 'write')
+    const done = pipe(socket, new PassThrough(), output)
+    const assertion = expect(done).rejects.toThrow('the WebSocket connection failed')
+    socket.dispatchEvent(new Event('error'))
+    await assertion
+    socket.closeWith(1005)
+    expect(write).not.toHaveBeenCalled()
   })
 })

@@ -44,8 +44,6 @@ async function bridgeUrl(
 export interface PipeLimits {
   // The bridge must answer the upgrade within this time; ssh's ConnectTimeout does not cover a silent ProxyCommand.
   openTimeoutMs: number
-  // An idle connection gets an empty message this often so no intermediary drops it.
-  keepAliveMs: number
   // Stop reading ssh's input while the socket holds more unsent bytes than this.
   sendHighWater: number
   // The native WebSocket cannot pause, so a reader this far behind ends the connection.
@@ -55,7 +53,6 @@ export interface PipeLimits {
 const MiB = 1024 * 1024
 const DEFAULT_LIMITS: PipeLimits = {
   openTimeoutMs: 20_000,
-  keepAliveMs: 25_000,
   sendHighWater: MiB,
   receiveHighWater: 16 * MiB,
 }
@@ -65,21 +62,6 @@ const CLEAN_CLOSE_CODES = [1000, 1005]
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-// Pings with an empty message when nothing was sent for `intervalMs`; the native client has no ping frame.
-function keepAlive(socket: WebSocket, intervalMs: number): NodeJS.Timeout {
-  let lastSend = Date.now()
-  const send = socket.send.bind(socket)
-  socket.send = (data) => {
-    lastSend = Date.now()
-    send(data)
-  }
-  return setInterval(() => {
-    if (Date.now() - lastSend >= intervalMs && socket.readyState === WebSocket.OPEN) {
-      socket.send(new Uint8Array(0))
-    }
-  }, intervalMs)
 }
 
 // Reads ssh's input into the socket, pausing while the socket's send buffer is full.
@@ -94,32 +76,13 @@ async function sendInput(socket: WebSocket, input: Readable, limits: PipeLimits)
   socket.close()
 }
 
-// How the pipe ended; the first ending wins, stops the timers and closes the socket.
-interface Ending {
-  done: boolean
-  resolve(): void
-  fail(error: Error): void
-}
-
-function ending(socket: WebSocket, timers: NodeJS.Timeout[], promise: PromiseHandlers): Ending {
-  const state: Ending = {
-    done: false,
-    resolve: () => stop(promise.resolve),
-    fail: (error) => stop(() => promise.reject(error)),
+// Writes a bridge message to ssh; returns why the pipe must end, if it must (the native WebSocket cannot pause).
+function relay(data: unknown, output: Writable, limits: PipeLimits): Error | undefined {
+  if (typeof data === 'string') return new Error('the bridge sent a text message')
+  output.write(Buffer.from(data as ArrayBuffer))
+  if (output.writableLength > limits.receiveHighWater) {
+    return new Error('ssh is not reading fast enough')
   }
-  function stop(settle: () => void): void {
-    if (state.done) return
-    state.done = true
-    for (const timer of timers) clearTimeout(timer)
-    if (socket.readyState < WebSocket.CLOSING) socket.close()
-    settle()
-  }
-  return state
-}
-
-interface PromiseHandlers {
-  resolve(): void
-  reject(error: Error): void
 }
 
 // Copies bytes both ways until either side closes; a socket error or an abnormal close rejects.
@@ -130,37 +93,40 @@ export function pipeThrough(
 ): Promise<void> {
   socket.binaryType = 'arraybuffer'
   return new Promise((resolve, reject) => {
-    const timers: NodeJS.Timeout[] = []
-    const end = ending(socket, timers, { resolve, reject })
-    timers.push(
-      setTimeout(
-        () => end.fail(new Error(`the bridge did not open within ${limits.openTimeoutMs / 1000}s`)),
-        limits.openTimeoutMs,
-      ),
+    let done = false
+    // The first ending wins: it stops the open timer and closes the socket.
+    function settle(error?: Error): void {
+      if (done) return
+      done = true
+      clearTimeout(openTimer)
+      if (socket.readyState < WebSocket.CLOSING) socket.close()
+      if (error) reject(error)
+      else resolve()
+    }
+    const openTimer = setTimeout(
+      () => settle(new Error(`the bridge did not open within ${limits.openTimeoutMs / 1000}s`)),
+      limits.openTimeoutMs,
     )
     socket.addEventListener('open', () => {
-      clearTimeout(timers[0])
-      timers.push(keepAlive(socket, limits.keepAliveMs))
-      sendInput(socket, tunnel.input, limits).catch(end.fail)
+      clearTimeout(openTimer)
+      sendInput(socket, tunnel.input, limits).catch(settle)
     })
     socket.addEventListener('message', ({ data }) => {
-      if (end.done) return
-      if (typeof data === 'string') return end.fail(new Error('the bridge sent a text message'))
-      tunnel.output.write(Buffer.from(data as ArrayBuffer))
-      if (tunnel.output.writableLength > limits.receiveHighWater) {
-        end.fail(new Error('ssh is not reading fast enough'))
-      }
+      if (done) return
+      const error = relay(data, tunnel.output, limits)
+      if (error) settle(error)
     })
     // ssh closing its end while the bridge still sends would otherwise crash on EPIPE.
-    tunnel.output.on('error', end.fail)
-    socket.addEventListener('error', () => end.fail(new Error('the WebSocket connection failed')))
+    tunnel.output.on('error', settle)
+    socket.addEventListener('error', () => settle(new Error('the WebSocket connection failed')))
     socket.addEventListener('close', (event) => {
+      if (done) return
       const { code } = event as CloseEvent
       if (!CLEAN_CLOSE_CODES.includes(code)) {
-        return end.fail(new Error(`the bridge closed with code ${code}`))
+        return settle(new Error(`the bridge closed with code ${code}`))
       }
       // An empty write completes once everything before it has reached ssh.
-      tunnel.output.write(Buffer.alloc(0), (error) => (error ? end.fail(error) : end.resolve()))
+      tunnel.output.write(Buffer.alloc(0), (error) => settle(error ?? undefined))
     })
   })
 }

@@ -94,6 +94,8 @@ export async function startWsBridge(targetPort: number): Promise<WsBridge> {
       for (const { opcode, payload } of parsed.frames) {
         if (opcode === OP_CLOSE) target.end()
         else if (opcode === OP_PING) socket.write(frame(OP_PONG, payload))
+        // websocat reads an empty binary message as the end of the stream.
+        else if (opcode !== OP_PONG && payload.length === 0) target.end()
         else if (opcode !== OP_PONG) target.write(payload)
       }
     })
