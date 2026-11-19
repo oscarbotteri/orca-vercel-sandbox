@@ -16,6 +16,8 @@ export interface SandboxSession {
   // Runs a shell command and returns its stdout; a non-zero exit throws.
   exec(command: string, options?: ExecOptions): Promise<string>
   writeFile(path: string, content: string | Uint8Array, mode: number): Promise<void>
+  // Stops the sandbox; its files survive and a later resume brings it back.
+  stop(): Promise<void>
   delete(): Promise<void>
 }
 
@@ -26,6 +28,8 @@ export interface SandboxRequest {
 
 export interface SandboxProvider {
   create(request: SandboxRequest): Promise<SandboxSession>
+  // Looks a sandbox up; `resume` also starts it again if it is stopped.
+  get(name: string, options?: { resume?: boolean }): Promise<SandboxSession>
 }
 
 function wrap(sandbox: Sandbox): SandboxSession {
@@ -46,6 +50,9 @@ function wrap(sandbox: Sandbox): SandboxSession {
       return finished.stdout()
     },
     writeFile: (path, content, mode) => sandbox.writeFiles([{ path, content, mode }]),
+    async stop() {
+      await sandbox.stop()
+    },
     async delete() {
       await sandbox.delete()
     },
@@ -66,6 +73,15 @@ export function vercelSandboxes(credentials: VercelCredentials, network: Network
         return wrap(sandbox)
       } catch (error) {
         throw new UserError(`cannot create sandbox ${name} on Vercel: ${reasonOf(error)}`, {
+          cause: error,
+        })
+      }
+    },
+    async get(name, { resume = false } = {}) {
+      try {
+        return wrap(await Sandbox.get({ name, resume, ...credentials, fetch: network.fetch }))
+      } catch (error) {
+        throw new UserError(`cannot look up sandbox ${name} on Vercel: ${reasonOf(error)}`, {
           cause: error,
         })
       }

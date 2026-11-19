@@ -76,11 +76,17 @@ export async function installSshBridge(
   )
 }
 
-// Processes do not survive a stop, so wake runs this again; nothing is installed here.
+// Processes do not survive a stop, so wake runs this again; nothing is installed here. Each
+// process starts only if it is not already running, so a second wake finds nothing to do.
 export async function startSshBridge(session: SandboxSession): Promise<void> {
-  await session.exec(`mkdir -p /run/sshd && /usr/sbin/sshd -f ${SSHD_CONFIG}`, { sudo: true })
   await session.exec(
-    `nohup ${WEBSOCAT} --binary ws-l:0.0.0.0:${BRIDGE_PORT} tcp:127.0.0.1:22 >${BRIDGE_LOG} 2>&1 &`,
+    `pgrep -x sshd >/dev/null || { mkdir -p /run/sshd && /usr/sbin/sshd -f ${SSHD_CONFIG}; }`,
+    { sudo: true },
+  )
+  // The trailing & backgrounds the whole `||` list, so a running bridge is left alone.
+  await session.exec(
+    `pgrep -x websocat >/dev/null || ` +
+      `nohup ${WEBSOCAT} --binary ws-l:0.0.0.0:${BRIDGE_PORT} tcp:127.0.0.1:22 >${BRIDGE_LOG} 2>&1 &`,
     { background: true },
   )
 }

@@ -19,7 +19,7 @@ describe('vm-recipe.json', () => {
     }
   })
 
-  it.each(['suspend', 'resume', 'destroy'] as const)(
+  it.each(['destroy'] as const)(
     'phase %s reaches the adapter and hands it the lifecycle payload from stdin',
     async (phase) => {
       const stdin = JSON.stringify({

@@ -1,8 +1,10 @@
 import type { Readable, Writable } from 'node:stream'
 import { Sandbox } from '@vercel/sandbox'
+import { isAsleep } from './asleep.ts'
 import type { Command, CommandContext } from './commands.ts'
 import type { VercelCredentials } from './credentials.ts'
 import { reasonOf, UserError } from './errors.ts'
+import { resolveHome } from './home.ts'
 import { BRIDGE_PORT, SANDBOX_NAME } from './lifecycle-payload.ts'
 
 export interface Network {
@@ -66,10 +68,19 @@ function pipeThrough(socket: WebSocket, tunnel: Tunnel): Promise<void> {
   })
 }
 
-async function runProxy({ args, credentials, network, tunnel }: CommandContext): Promise<void> {
+async function runProxy({
+  args,
+  credentials,
+  env,
+  network,
+  tunnel,
+}: CommandContext): Promise<void> {
   const name = args[0]
   if (!name || !SANDBOX_NAME.test(name)) {
     throw new UserError('usage: vercel-orca proxy <sandbox-name>')
+  }
+  if (isAsleep(resolveHome(env), name)) {
+    throw new UserError(`sandbox ${name} is asleep; wake the workspace in Orca to connect`)
   }
   const url = await bridgeUrl(name, credentials(), network)
   try {

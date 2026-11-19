@@ -13,10 +13,10 @@ function payloadFor(resourceId: string, extra: Record<string, unknown> = {}): st
 
 describe('lifecycle.log', () => {
   it('records the sandbox name, the outcome and a timing', async () => {
-    const result = await runCli(['suspend'], { stdin: payloadFor('orca-abc123') })
+    const result = await runCli(['destroy'], { stdin: payloadFor('orca-abc123') })
     const log = result.readLog()
-    expect(log).toMatch(/suspend sandbox=orca-abc123 started/)
-    expect(log).toMatch(/suspend sandbox=orca-abc123 failed after \d+ms: .*not implemented yet/)
+    expect(log).toMatch(/destroy sandbox=orca-abc123 started/)
+    expect(log).toMatch(/destroy sandbox=orca-abc123 failed after \d+ms: .*not implemented yet/)
   })
 
   it('is created in the adapter home with the layout the other commands rely on', async () => {
