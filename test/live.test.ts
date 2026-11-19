@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -28,6 +29,8 @@ describe.skipIf(!process.env[LIVE])('live sandbox lifecycle', () => {
     }
     sandboxes = vercelSandboxes(credentials, { fetch, webSocket: (url) => new WebSocket(url) })
     host = createOrcaHost()
+    // ssh records the sandbox's host key under ~/.ssh, which a person's home already has.
+    mkdirSync(join(host.home, '.ssh'), { mode: 0o700 })
   })
 
   // Whatever failed above, the sandbox must not be left running and billing.
