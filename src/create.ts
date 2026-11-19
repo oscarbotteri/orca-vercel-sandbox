@@ -1,19 +1,23 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import type { Command, CommandContext } from './commands.ts'
+import { createCleanup } from './create-cleanup.ts'
 import { reasonOf, UserError } from './errors.ts'
 import { type CheckoutSource, prepareCheckout } from './git-bundle.ts'
 import { type AdapterHome, resolveHome } from './home.ts'
 import { shellQuote, wrapperPath } from './install.ts'
+import { knownHostsPath } from './known-hosts.ts'
 import { BRIDGE_PORT } from './lifecycle-payload.ts'
 import { checkoutBundle } from './sandbox-checkout.ts'
 import type { SandboxSession } from './sandbox-session.ts'
 import { installSshBridge, readBridgeLog, readIdentity, startSshBridge } from './sandbox-ssh.ts'
-import { addSandboxHost, removeSandboxHost } from './ssh-config.ts'
-import { generateKey, removeKey } from './ssh-keys.ts'
+import { addSandboxHost } from './ssh-config.ts'
+import { generateKey } from './ssh-keys.ts'
 
 const VERIFY_ATTEMPTS = 6
 const VERIFY_DELAY_MS = 500
+const EXIT_CANCELLED = 130
+const SIGNALS = ['SIGINT', 'SIGTERM'] as const
 
 interface CreateResult {
   sshTarget: { host: string; port: number; username: string; proxyCommand: string }
@@ -33,6 +37,8 @@ function sshAttempt(home: AdapterHome, name: string, env: NodeJS.ProcessEnv): Pr
         'BatchMode=yes',
         '-o',
         'StrictHostKeyChecking=accept-new',
+        '-o',
+        `UserKnownHostsFile=${knownHostsPath(env)}`,
         '-o',
         'ConnectTimeout=20',
         name,
@@ -88,31 +94,31 @@ async function provision(
 }
 
 async function runCreate(context: CommandContext): Promise<void> {
-  const { logger, sandboxes, stdout } = context
+  const { logger, sandboxes, stdout, process } = context
   const home = resolveHome(context.env)
   const name = `orca-${randomBytes(3).toString('hex')}`
   const provider = sandboxes()
   // Bundled before the sandbox exists: a repo Git cannot bundle costs nothing.
   const source = await prepareCheckout(context.env)
   logger.info(`create ${name}: creating the sandbox with port ${BRIDGE_PORT} published`)
-  const session = await provider.create({ name, ports: [BRIDGE_PORT] })
+  // A signal can arrive before provider.create resolves; cleanup then waits for the session.
+  const creating = provider.create({ name, ports: [BRIDGE_PORT] })
+  const cleanup = createCleanup({ name, home, env: context.env, logger }, () => creating)
+  const cancel = (): void => {
+    logger.error(`create ${name}: cancelled by a signal`)
+    void cleanup().finally(() => process.exit(EXIT_CANCELLED))
+  }
+  for (const signal of SIGNALS) process.once(signal, cancel)
   try {
+    const session = await creating
     const result = await provision(session, context, home, source)
     stdout.write(`${JSON.stringify(result)}\n`)
   } catch (error) {
-    logger.error(`create ${name}: removing the sandbox after: ${reasonOf(error)}`)
-    // The sandbox costs money, so it goes first and a failing local cleanup cannot stop it.
-    await session.delete().catch((deleteError: unknown) => {
-      logger.error(`create ${name}: could not delete the sandbox: ${reasonOf(deleteError)}`)
-    })
-    try {
-      // The private key first: it is the only sensitive file.
-      removeKey(home, name)
-      removeSandboxHost(home.sshConfig, name)
-    } catch (cleanupError) {
-      logger.error(`create ${name}: could not remove local files: ${reasonOf(cleanupError)}`)
-    }
+    logger.error(`create ${name}: cleaning up after: ${reasonOf(error)}`)
+    await cleanup()
     throw error
+  } finally {
+    for (const signal of SIGNALS) process.off(signal, cancel)
   }
 }
 

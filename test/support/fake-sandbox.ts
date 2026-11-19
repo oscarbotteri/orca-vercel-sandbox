@@ -25,6 +25,10 @@ export interface FakeSandboxOptions {
   localGit?: boolean
   // Runs when the sandbox is deleted, before the local cleanup follows.
   onDelete?(): void
+  // Runs before each command; a promise that never settles holds the create at that step.
+  onCommand?(command: string): void | Promise<void>
+  // Holds provider.create (the sandbox exists on Vercel, the session has not come back yet).
+  beforeCreateResolves?(name: string): Promise<void>
   // Called with each new sandbox's name, e.g. to make the fake Vercel API know it.
   onCreate?(name: string): void
 }
@@ -43,10 +47,12 @@ export function fakeSandboxes(sshd: LocalSshd, options: FakeSandboxOptions = {})
     async create(request) {
       fake.created.push(request)
       options.onCreate?.(request.name)
+      await options.beforeCreateResolves?.(request.name)
       const session: SandboxSession = {
         name: request.name,
         async exec(command: string, _options?: ExecOptions) {
           fake.commands.push(command)
+          await options.onCommand?.(command)
           if (options.failOn && command.includes(options.failOn)) {
             throw new Error(`command failed: ${command}`)
           }

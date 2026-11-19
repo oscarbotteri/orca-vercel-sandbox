@@ -2,9 +2,10 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable, Writable } from 'node:stream'
-import { run } from '../../src/main.ts'
+import { type ProcessControl, run } from '../../src/main.ts'
 import type { SandboxProvider } from '../../src/sandbox-session.ts'
 import { fakeNetwork } from './fake-network.ts'
+import { fakeProcess } from './fake-process.ts'
 
 export interface CliRun {
   code: number
@@ -36,6 +37,8 @@ export interface CliOptions {
   failTunnelWrites?: boolean
   // Reuse the user home of an earlier run instead of creating a fresh one.
   userHome?: string
+  // Stands in for the process: where signals arrive and the exit code is asked for.
+  process?: ProcessControl
   // Seed the user home before the command runs.
   beforeRun?(userHome: string): void
 }
@@ -74,6 +77,7 @@ export async function runCli(argv: string[], options: CliOptions = {}): Promise<
       },
     },
     sandboxes: options.sandboxes,
+    process: options.process ?? fakeProcess(),
     network: options.network
       ? fakeNetwork(options.network.apiUrl, options.network.bridgePort)
       : fakeNetwork('http://127.0.0.1:1', 1),
