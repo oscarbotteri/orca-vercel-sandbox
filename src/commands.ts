@@ -1,3 +1,4 @@
+import type { VercelCredentials } from './credentials.ts'
 import { UserError } from './errors.ts'
 import type { LifecyclePayload } from './lifecycle-payload.ts'
 import type { Logger, Sink } from './logger.ts'
@@ -7,6 +8,8 @@ export interface CommandContext {
   logger: Logger
   // Only `create` writes here: its JSON result is the one thing Orca reads from stdout.
   stdout: Sink
+  // Resolved on demand so a command that never calls the API does not need them.
+  credentials(): VercelCredentials
   // Present for suspend, resume and destroy, which Orca feeds a lifecycle payload.
   payload?: LifecyclePayload
 }
