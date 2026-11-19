@@ -6,15 +6,21 @@ export interface VercelCredentials {
   projectId: string
 }
 
-const VARIABLES = {
+export const VARIABLES = {
   token: 'VERCEL_TOKEN',
   teamId: 'VERCEL_TEAM_ID',
   projectId: 'VERCEL_PROJECT_ID',
 } as const satisfies Record<keyof VercelCredentials, string>
 
-// Anything an HTTP header or an ID cannot hold: whitespace or control characters.
+// Printable ASCII with no space: all an HTTP header or a Vercel ID can hold. Anything else (a
+// pasted zero-width character, a smart quote) would only fail later as an opaque header error.
 function isUnsafe(value: string): boolean {
-  return /\s/.test(value) || [...value].some((char) => char <= '\u001f' || char === '\u007f')
+  return !/^[\x21-\x7e]+$/.test(value)
+}
+
+// The one place a variable is read, so whoever redacts it shares the trim rule.
+export function readEnv(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  return env[name]?.trim()
 }
 
 // Reads the credentials from the environment (exported in the shell profile) and checks their
@@ -24,10 +30,9 @@ export function resolveCredentials(env: NodeJS.ProcessEnv): VercelCredentials {
   const found: Partial<VercelCredentials> = {}
   const problems: string[] = []
   for (const [field, name] of Object.entries(VARIABLES) as [keyof VercelCredentials, string][]) {
-    const value = env[name]?.trim()
+    const value = readEnv(env, name)
     if (!value) problems.push(`${name} is not set`)
-    else if (isUnsafe(value))
-      problems.push(`${name} is not valid (no spaces or control characters)`)
+    else if (isUnsafe(value)) problems.push(`${name} is not valid (printable ASCII, no spaces)`)
     else found[field] = value
   }
   if (problems.length > 0) {

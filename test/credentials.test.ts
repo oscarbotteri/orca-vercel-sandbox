@@ -42,7 +42,9 @@ describe('resolveCredentials', () => {
     ['VERCEL_TEAM_ID', 'team_abc\u0000'],
     ['VERCEL_PROJECT_ID', 'prj_a\tb'],
     ['VERCEL_TOKEN', 'vcp_abc\u007fdef'],
-  ])('rejects %s with whitespace or control characters inside', (name, value) => {
+    ['VERCEL_TOKEN', 'vcp_abc\u200bdef'],
+    ['VERCEL_TEAM_ID', '\u201cteam_abc\u201d'],
+  ])('rejects %s with a space, control or non-ASCII character inside', (name, value) => {
     const error = catchError(() => resolveCredentials({ ...complete, [name]: value }))
     expect(error.message).toContain(`${name} is not valid`)
   })

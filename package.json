@@ -17,7 +17,7 @@
     "check": "biome check .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "verify": "tsc --noEmit && npm run lint && npm run format:check && npm test"
+    "verify": "tsc --noEmit && npm run check && npm test"
   },
   "dependencies": {
     "@vercel/sandbox": "^4.0.0"
@@ -25,6 +25,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",
     "@types/node": "^24.19.2",
+    "@vitest/coverage-v8": "^5.1.1",
     "typescript": "^7.0.2",
     "vitest": "^5.1.1"
   }
