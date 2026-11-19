@@ -14,7 +14,7 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# The job names below are the status checks the `main` ruleset requires (docs/ci.md).
+# The job names below are the status checks a `main` ruleset can require.
 # Renaming one breaks that rule, so keep them stable.
 jobs:
   check:
