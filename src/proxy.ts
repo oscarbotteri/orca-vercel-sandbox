@@ -41,30 +41,93 @@ async function bridgeUrl(
   }
 }
 
-// Copies bytes both ways until either side closes; a socket error rejects.
-function pipeThrough(socket: WebSocket, tunnel: Tunnel): Promise<void> {
+export interface PipeLimits {
+  // The bridge must answer the upgrade within this time; ssh's ConnectTimeout does not cover a silent ProxyCommand.
+  openTimeoutMs: number
+  // Stop reading ssh's input while the socket holds more unsent bytes than this.
+  sendHighWater: number
+  // The native WebSocket cannot pause, so a reader this far behind ends the connection.
+  receiveHighWater: number
+}
+
+const MiB = 1024 * 1024
+const DEFAULT_LIMITS: PipeLimits = {
+  openTimeoutMs: 20_000,
+  sendHighWater: MiB,
+  receiveHighWater: 16 * MiB,
+}
+const DRAIN_POLL_MS = 10
+// A local close after stdin EOF gives one of these; any other code means the bridge failed.
+const CLEAN_CLOSE_CODES = [1000, 1005]
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+// Reads ssh's input into the socket, pausing while the socket's send buffer is full.
+async function sendInput(socket: WebSocket, input: Readable, limits: PipeLimits): Promise<void> {
+  for await (const chunk of input) {
+    while (socket.readyState === WebSocket.OPEN && socket.bufferedAmount > limits.sendHighWater) {
+      await sleep(DRAIN_POLL_MS)
+    }
+    if (socket.readyState !== WebSocket.OPEN) return
+    socket.send(chunk as Uint8Array)
+  }
+  socket.close()
+}
+
+// Writes a bridge message to ssh; returns why the pipe must end, if it must (the native WebSocket cannot pause).
+function relay(data: unknown, output: Writable, limits: PipeLimits): Error | undefined {
+  if (typeof data === 'string') return new Error('the bridge sent a text message')
+  output.write(Buffer.from(data as ArrayBuffer))
+  if (output.writableLength > limits.receiveHighWater) {
+    return new Error('ssh is not reading fast enough')
+  }
+}
+
+// Copies bytes both ways until either side closes; a socket error or an abnormal close rejects.
+export function pipeThrough(
+  socket: WebSocket,
+  tunnel: Tunnel,
+  limits: PipeLimits = DEFAULT_LIMITS,
+): Promise<void> {
   socket.binaryType = 'arraybuffer'
   return new Promise((resolve, reject) => {
+    let done = false
+    // The first ending wins: it stops the open timer and closes the socket.
+    function settle(error?: Error): void {
+      if (done) return
+      done = true
+      clearTimeout(openTimer)
+      if (socket.readyState < WebSocket.CLOSING) socket.close()
+      if (error) reject(error)
+      else resolve()
+    }
+    const openTimer = setTimeout(
+      () => settle(new Error(`the bridge did not open within ${limits.openTimeoutMs / 1000}s`)),
+      limits.openTimeoutMs,
+    )
     socket.addEventListener('open', () => {
-      void (async () => {
-        for await (const chunk of tunnel.input) {
-          if (socket.readyState !== WebSocket.OPEN) return
-          socket.send(chunk as Uint8Array)
-        }
-        socket.close()
-      })().catch(reject)
+      clearTimeout(openTimer)
+      sendInput(socket, tunnel.input, limits).catch(settle)
     })
     socket.addEventListener('message', ({ data }) => {
-      if (typeof data === 'string') return reject(new Error('the bridge sent a text message'))
-      tunnel.output.write(Buffer.from(data as ArrayBuffer))
+      if (done) return
+      const error = relay(data, tunnel.output, limits)
+      if (error) settle(error)
     })
     // ssh closing its end while the bridge still sends would otherwise crash on EPIPE.
-    tunnel.output.on('error', reject)
-    socket.addEventListener('error', () => reject(new Error('the WebSocket connection failed')))
-    // An empty write completes once everything before it has reached ssh.
-    socket.addEventListener('close', () =>
-      tunnel.output.write(Buffer.alloc(0), (error) => (error ? reject(error) : resolve())),
-    )
+    tunnel.output.on('error', settle)
+    socket.addEventListener('error', () => settle(new Error('the WebSocket connection failed')))
+    socket.addEventListener('close', (event) => {
+      if (done) return
+      const { code } = event as CloseEvent
+      if (!CLEAN_CLOSE_CODES.includes(code)) {
+        return settle(new Error(`the bridge closed with code ${code}`))
+      }
+      // An empty write completes once everything before it has reached ssh.
+      tunnel.output.write(Buffer.alloc(0), (error) => settle(error ?? undefined))
+    })
   })
 }
 
